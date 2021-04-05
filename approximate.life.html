@@ -42,7 +42,7 @@ var TriangleBuilder = function()
 
     // Amount of simulation detail; each edge is simulated with many intermediate
     // points, to give the cells flexible walls that conform to their surroundings.
-    this.pointsPerEdge = 7;
+    this.pointsPerEdge = 5;
     this.maxEdges = this.maxTriangles * 3;
     this.pointsPerTriangle = (this.pointsPerEdge - 1) * 3;
     this.maxPoints = this.maxEdges * this.pointsPerEdge;
@@ -638,27 +638,24 @@ function simulation()
     // criteria for mutations. Or we can allow a ratio larger than
     // 1.0 in order to allow some detrimental mutations to survive
     // in order to add noise to the system.
-    var peakRatioThreshold = 1.01;
+    var peakRatioThreshold = 1.002;
 
-    function mutate( iters )
+    function mutate()
     {
         var bitstream = tb.bitstream;
         var length = bitstream.length;
         var random = Math.random;
-
+        var iters = (frameCount < 20) ? 1 : ((1 + 8 * random())|0);
         while (iters > 0) {
             var r = (0x7fffffff * random())|0;
-            var rLoc = r % length;
-            var rType = r & 15;
-
-            bitstream[rLoc] ^= 1;
+            bitstream[r % length] ^= 1;
             iters--;
         }
     }
 
     function largeTransform()
     {
-        var s = 80;
+        var s = 60;
         context.setTransform(s,0, 0,s, canvas.width * 0.5, canvas.height * 0.45);
     }
 
@@ -674,14 +671,14 @@ function simulation()
         // Model this shape from scratch on each frame
         tb.clear();
         tb.build();
-        tb.simulate(100);
+        tb.simulate(200);
 
         captureContext.fillStyle = 'white';
         captureContext.fillRect(0, 0, captureSize[0], captureSize[1]);
 
         if (reference) {
             // Capture a test image; a tiny black-and-white drawing of the shape
-            var s = 4;
+            var s = 2;
             captureContext.setTransform(s,0, 0,s, captureXY[0], captureXY[1]);
             captureContext.fillStyle = 'black';
             tb.drawTrianglePaths(captureContext);
@@ -770,7 +767,7 @@ function simulation()
         if (frameCount > 1) {
           // Mutate bitstream for next time. We want to try the unmutated
           // saved bitstream on the first cycle.
-          mutate(3);
+          mutate();
         }
 
         return result;
@@ -794,7 +791,7 @@ function simulation()
           window.requestAnimationFrame(frame);
         } else {
           if (frameCount <= 1) {
-            setTimeout(frame, 1000);
+            setTimeout(frame, 4000);
           } else if (frameCount < 50) {
             setTimeout(frame, 2000);
           } else if (frameCount < 150) {
