@@ -17,7 +17,7 @@ var TriangleBuilder = function()
     // (C) Micah Elizabeth Scott 2014
 
     // Default visual style
-    this.triangleFillStyle = '#9d3194';
+    this.triangleFillStyle = 'rgba(255,40,200,0.3)';
     this.edgeStrokeStyle = '#e5cbe3';
     this.edgeStrokeWidth = 0.055;
     this.borderStrokeStyle = 'rgba(80,80,50,0.01)';
@@ -28,7 +28,7 @@ var TriangleBuilder = function()
     this.pressureK = 0.3;
     this.tensionK = 1.0;
     this.surfaceTensionK = 2.0;
-    this.restingArea = 0.5;
+    this.restingArea = 3.0;
 
     // Size of triangle memo buffer, and maximum size of shapes we can build.
     // Must be a power of two.
@@ -340,7 +340,10 @@ TriangleBuilder.prototype.build = function()
     var yBit = worldSizeLog2 + 1;
     var wordIndex = 0;
 
-    bitstream.forEach((bit) => {
+    // From most significant bit (root) to least significant (leaves)
+    for (var bitNum = numBits - 1; bitNum >= 0; bitNum--) {
+      var bit = bitstream[bitNum];
+
       // Triangle origin and polarity. Two triangle polarities:
       //    0: [ (x,y), (x+1,y), (x,y+1) ]
       //    1: [ (x,y), (x,y+1), (x-1,y+1) ]
@@ -489,7 +492,7 @@ TriangleBuilder.prototype.build = function()
           // Done building triangle
           numTriangles++;
       }
-    });
+    }
 
     this.turtle = [tx, ty, ta];
     this.numTriangles = numTriangles;
@@ -619,7 +622,7 @@ function simulation()
     var context = canvas.getContext('2d');
 
     var unitRadius = canvas.width * 0.01;
-    var captureSize = [64, 64];
+    var captureSize = [96, 96];
     var captureXY = [captureSize[0]/2, captureSize[1]/2];
 
     var captureCanvas = document.createElement('canvas');
@@ -644,13 +647,14 @@ function simulation()
     {
         var bitstream = tb.bitstream;
         var length = bitstream.length;
-        var random = Math.random;
-        var iters = (frameCount < 20) ? 1 : ((1 + 8 * random())|0);
-        while (iters > 0) {
-            var r = (0x7fffffff * random())|0;
-            bitstream[r % length] ^= 1;
-            iters--;
-        }
+        var r = (0x7fffffff * Math.random())|0;
+        var split = r & 15;
+        r >>= 4;
+        var sides = r & 3;
+        r >>= 2;
+        if (sides & 1) bitstream[(r-split) % length] ^= 1;
+        bitstream[(r) % length] ^= 1;
+        if (sides & 2) bitstream[(r+split) % length] ^= 1;
     }
 
     function largeTransform()
@@ -687,7 +691,7 @@ function simulation()
             // Capture the reference image: what we're trying to draw
             captureContext.textAlign = 'center';
             captureContext.textBaseline = 'middle';
-            captureContext.font = '40px "Futura PT"';
+            captureContext.font = 'bold 60px "Futura PT"';
             captureContext.fillStyle = 'black';
             captureContext.fillText('Art', captureXY[0], captureXY[1]);
         }
@@ -737,7 +741,7 @@ function simulation()
                 noTransform();
 
                 // Draw binary pattern
-                context.fillStyle = '#888';
+                context.fillStyle = '#fff';
                 for (var i = 0; i < tb.numBits; i++) {
                   var w = canvas.width / tb.numBits;
                   var y = canvas.height - 160;
@@ -775,27 +779,26 @@ function simulation()
 
     function frame()
     {
+        var DEBUG = false;
+
         frameCount += 1;
         context.clearRect(0, 0, canvas.width, canvas.height);
         while (!cycle());
 
         // Draw comparison image and reference, for debug
-        if (false) {
+        if (DEBUG) {
             context.putImageData(reference, 0, 0);
             context.globalAlpha = 0.5;
             context.drawImage(captureCanvas, 0, 0);
             context.globalAlpha = 1.0;
         }
 
-        if (false) {
+        if (DEBUG) {
           window.requestAnimationFrame(frame);
         } else {
-          if (frameCount <= 1) {
-            setTimeout(frame, 4000);
-          } else if (frameCount < 50) {
-            setTimeout(frame, 2000);
-          } else if (frameCount < 150) {
-            setTimeout(frame, 400);
+          var delay = 10000 / (1 + frameCount * 0.1);
+          if (delay > 0.1) {
+            setTimeout(frame, delay);
           } else {
             window.requestAnimationFrame(frame);
           }
@@ -810,7 +813,7 @@ function simulation()
 
     body {
         background: #400;
-        color: #888;
+        color: #bbb;
         overflow: hidden;
     }
 
@@ -832,7 +835,7 @@ function simulation()
 
     #sig {
       position: absolute;
-      left: 0.5em;
+      left: 0.25em;
       bottom: 0;
       font: 30px "DIN Condensed";
     }
