@@ -1,11 +1,12 @@
 <!DOCTYPE html>
-<html>
-<head>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
 <script type="text/javascript">
 
 // Design sketch for "Play" project.
 // (C) Micah Elizabeth Scott 2014
+// With some tinkering in 2021.
 
+// Render with OBS at 2560x1440
 
 var TriangleBuilder = function()
 {
@@ -16,11 +17,11 @@ var TriangleBuilder = function()
     // (C) Micah Elizabeth Scott 2014
 
     // Default visual style
-    this.triangleFillStyle = '#64a46b';
-    this.edgeStrokeStyle = '#3f6844';
-    this.edgeStrokeWidth = 1/8;
-    this.borderStrokeStyle = '#101b12';
-    this.borderStrokeWidth = 0.35;
+    this.triangleFillStyle = '#9d3194';
+    this.edgeStrokeStyle = '#e5cbe3';
+    this.edgeStrokeWidth = 0.055;
+    this.borderStrokeStyle = 'rgba(80,80,50,0.01)';
+    this.borderStrokeWidth = 5.0;
 
     // Force model
     this.k = 0.1;
@@ -36,7 +37,7 @@ var TriangleBuilder = function()
     this.worldArea = this.worldSize * this.worldSize
 
     // Maximum triangle counts, based on maximum bitstream sizes
-    this.maxWords = 64;
+    this.maxWords = 16;
     this.maxBytes = this.maxWords * 4;
     this.maxTriangles = this.maxBytes * 8;
 
@@ -83,7 +84,7 @@ var TriangleBuilder = function()
     // gives the index in pointX and pointY corresponding to that triangle vertex.
     this.pointMap = new Uint32Array(this.worldArea);
 
-    // Buffer for bitstream we build this triangle shape from. 
+    // Buffer for bitstream we build this triangle shape from.
     this.bitstream = new Uint32Array(this.maxWords);
     this.numBits = this.maxWords * 32;
 
@@ -608,7 +609,7 @@ TriangleBuilder.prototype.simulate = function( steps )
                 var begin = tri * pointsPerTriangle;
                 var end = (tri + 1) * pointsPerTriangle;
 
-                var p1 = trianglePointIDs[end - 1]; 
+                var p1 = trianglePointIDs[end - 1];
                 var x1 = pointX[p1];  // Loop around
                 var y1 = pointY[p1];
 
@@ -635,7 +636,7 @@ TriangleBuilder.prototype.simulate = function( steps )
                 var begin = tri * pointsPerTriangle;
                 var end = (tri + 1) * pointsPerTriangle;
 
-                var p1 = trianglePointIDs[end - 1]; 
+                var p1 = trianglePointIDs[end - 1];
                 var x1 = pointX[p1];  // Loop around
                 var y1 = pointY[p1];
 
@@ -666,9 +667,9 @@ function simulation()
     var tb = new TriangleBuilder();
     tb.fromHexString(document.location.hash);
 
+    var frameCount = 0;
+
     var canvas = document.getElementById('bitmap');
-    canvas.width = 800;
-    canvas.height = 300;
 
     var context = canvas.getContext('2d');
     var mouse = [ 0, 0 ];
@@ -678,7 +679,7 @@ function simulation()
     }
 
     var unitRadius = canvas.width * 0.01;
-    var captureSize = [96, 96];
+    var captureSize = [64, 64];
     var captureXY = [captureSize[0]/2, captureSize[1]/2];
 
     var captureCanvas = document.createElement('canvas');
@@ -697,7 +698,7 @@ function simulation()
     // criteria for mutations. Or we can allow a ratio larger than
     // 1.0 in order to allow some detrimental mutations to survive
     // in order to add noise to the system.
-    var peakRatioThreshold = 1.01;
+    var peakRatioThreshold = 1.005;
 
     function mutate( iters )
     {
@@ -715,24 +716,24 @@ function simulation()
             var r = 0xffffffff * random();
             r ^= r >>> 16;
             var rType = r & 15;
-        
+
             if (rType == 0) {
                 // Copy a whole word to a random place.
                 // This encourages reuse at a word level, promoting the development of
                 // larger structures and evolving word-sized building blocks that replecate more
                 // when they're more useful toward the goal.
 
-                var rWord = (r >>> 9) % length;          
+                var rWord = (r >>> 9) % length;
                 var rDelta = ((r >>> 4) & 31) - 16;
                 var rDest = rWord + rDelta;
 
                 if (rDest >= 0 && rDest < length) {
                     bitstream[rDest] = bitstream[rWord];
                 }
-            } else if (rType == 1) { 
+            } else if (rType == 1) {
                 // Flip word. This lets the building blocks work in either chirality.
-              
-                var rWord = (r >>> 9) % length;          
+
+                var rWord = (r >>> 9) % length;
                 bitstream[rWord] ^= 0xffffffff;
 
             } else if (rType == 2) {
@@ -749,7 +750,7 @@ function simulation()
                 // Bit Flip x3 in one word.
                 // (Rotation balanced)
 
-                var rWord = (r >>> 9) % length;          
+                var rWord = (r >>> 9) % length;
 
                 // Candidate bit locations
                 var r1 = r % 28;
@@ -770,13 +771,13 @@ function simulation()
             }
 
             iters--;
-        } 
+        }
     }
 
     function largeTransform()
     {
-        var s = 9;
-        context.setTransform(s,0, 0,s, canvas.width * 0.5, canvas.height * 0.5);
+        var s = 80;
+        context.setTransform(s,0, 0,s, canvas.width * 0.5, canvas.height * 0.45);
     }
 
     function noTransform()
@@ -786,6 +787,8 @@ function simulation()
 
     function cycle()
     {
+        var result = false;
+
         // Model this shape from scratch on each frame
         tb.clear();
         tb.build();
@@ -796,7 +799,8 @@ function simulation()
 
         if (reference) {
             // Capture a test image; a tiny black-and-white drawing of the shape
-            captureContext.setTransform(1,0, 0,1, captureXY[0], captureXY[1]);
+            var s = 4;
+            captureContext.setTransform(s,0, 0,s, captureXY[0], captureXY[1]);
             captureContext.fillStyle = 'black';
             tb.drawTrianglePaths(captureContext);
             captureContext.setTransform(1,0,0,1,0,0);
@@ -804,7 +808,7 @@ function simulation()
             // Capture the reference image: what we're trying to draw
             captureContext.textAlign = 'center';
             captureContext.textBaseline = 'middle';
-            captureContext.font = '30px Futura';
+            captureContext.font = '40px "Futura PT"';
             captureContext.fillStyle = 'black';
             captureContext.fillText('Art', captureXY[0], captureXY[1]);
         }
@@ -828,7 +832,7 @@ function simulation()
             var diff = 0;
             var a = img.data;
             var b = reference.data;
-            
+
             // Look at only one channel
             for (var i = 0, e = captureSize[0]*captureSize[1]*4; i != e; i+=4) {
                 var d = a[i] - b[i];
@@ -839,101 +843,124 @@ function simulation()
                 }
 
                 diff += d*d;
-            } 
+            }
 
             if (peakDiff == null || diff / peakDiff < peakRatioThreshold) {
                 // This didn't do much harm. Keep it!
 
                 peakDiff = diff;
                 peakBitstream = new Uint32Array(tb.bitstream.buffer.slice(0));
-
                 var hexStr = tb.toHexString();
 
-                document.getElementById('code').textContent = hexStr;
-                document.location.hash = hexStr.replace(/[ \n]/g, '');
-
                 // Draw
-                context.clearRect(0, 0, canvas.width, canvas.height);
                 largeTransform();
                 tb.draw(context);
                 noTransform();
 
-            } else {
-                // Nope. Revert to saved peak.
+                // Draw binary pattern
+                context.fillStyle = '#ddd';
+                for (var i = 0; i < tb.numBits; i++) {
+                  var w = canvas.width / (tb.numBits+10);
+                  var y = canvas.height - 300;
+                  var h = (1 & (peakBitstream[i >> 5] >> (i & 31))) ? 50 : 4;
+                  context.fillRect(w*(i+4), y-h, w*0.2, h);
+                }
 
+                document.getElementById('code').textContent = hexStr;
+                result = true;
+            } else {
+                // Draw ghost image
+                context.strokeStyle = 'rgba(255,255,255,0.05)';
+                context.lineWidth = this.edgeStrokeWidth;
+                context.lineCap = 'round';
+                largeTransform();
+                tb.drawEdgePaths(context);
+                noTransform();
+
+                // Revert to saved peak.
                 tb.bitstream = new Uint32Array(peakBitstream.buffer.slice(0));
             }
-
         } else {
             // Store a reference image
             reference = img;
         }
 
-        // Mutate bitstream for next time. We want to try the unmutated
-        // saved bitstream on the first cycle.
-        mutate(4);
+        if (frameCount > 1) {
+          // Mutate bitstream for next time. We want to try the unmutated
+          // saved bitstream on the first cycle.
+          mutate(4);
+        }
+
+        return result;
     }
 
     function frame()
     {
-        for (var i = 0; i < 4; i++) {
-            cycle();
-        }
+        frameCount += 1;
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        while (!cycle());
 
-        // Draw ghost image
-
-        context.strokeStyle = 'rgba(0,0,0,0.1)';
-        context.lineWidth = this.edgeStrokeWidth;
-        context.lineCap = 'round';
-        largeTransform();
-        tb.drawEdgePaths(context);
-        noTransform();
-
-        // Draw comparison image and reference
-        if (false) {
-            context.putImageData(reference, 10, 0);
+        // Draw comparison image and reference, for debug
+        if (true) {
+            context.putImageData(reference, 0, 0);
             context.globalAlpha = 0.5;
-            context.drawImage(captureCanvas, 10, 0);
+            context.drawImage(captureCanvas, 0, 0);
             context.globalAlpha = 1.0;
         }
 
-        // Run as fast as possible
-        setTimeout(frame, 0);
+        if (true) {
+          window.requestAnimationFrame(frame);
+        } else {
+          if (frameCount <= 1) {
+            setTimeout(frame, 10000);
+          } else if (frameCount < 50) {
+            setTimeout(frame, 2000);
+          } else if (frameCount < 150) {
+            setTimeout(frame, 400);
+          } else {
+            window.requestAnimationFrame(frame);
+          }
+        }
     }
 
     frame();
 }
 
 </script>
-<style type='text/css'>
+<style type="text/css">
 
     body {
-        font: 12px Futura;
-        margin: 0;
-        padding: 0;
-    }
-
-    h1 {
-        font-size: 18px;
-        margin: 20px;
-    }
-
-    p {
-        margin: 20px;
+        background: #192822;
+        color: #555;
+        overflow: hidden;
     }
 
     #code {
-        margin: 20px;
-        font: 18px Monospace;
-        color: #555;
+        font: 55px "Lucida Console";
+        position: absolute;
+        text-align: center;
+        left: 0;
+        right: 0;
+        bottom: -5px;
+    }
+
+    #bitmap {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    #sig {
+      position: absolute;
+      left: 0.5em;
+      bottom: 0;
+      font: 30px "DIN Condensed";
     }
 
 </style>
 </head>
-<body onload='simulation()' >
-    <h1>Triangle / Play</h1>
-    <canvas id='bitmap'></canvas>
-    <pre id='code'></pre>
-    <p>Micah Elizabeth Scott / 2014</p>
-</body>
-</html>
+<body onload="simulation()">
+    <canvas id="bitmap" width="2560" height="1440"></canvas>
+    <pre id="code"></pre>
+    <span id="sig">MES 2014-2021</span>
+</body></html>
