@@ -648,7 +648,7 @@ function simulation()
         var bitstream = tb.bitstream;
         var length = bitstream.length;
         var r = (0x7fffffff * Math.random())|0;
-        var split = r & 15;
+        var split = 1+(r & 15);
         r >>= 4;
         var sides = r & 3;
         r >>= 2;
