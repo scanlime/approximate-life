@@ -653,6 +653,8 @@ function simulation()
     captureCanvas.height = captureSize[1];
     var captureContext = captureCanvas.getContext('2d');
 
+    var debugSamplePoints = [];
+
     var reference = null;
     var peakBitstream = null;
     var peakDiff = null;
@@ -664,7 +666,7 @@ function simulation()
     // criteria for mutations. Or we can allow a ratio larger than
     // 1.0 in order to allow some detrimental mutations to survive
     // in order to add noise to the system.
-    var peakRatioThreshold = 1.01;
+    var peakRatioThreshold = 1.05;
 
     function mutate()
     {
@@ -701,87 +703,75 @@ function simulation()
         tb.simulate(200);
         tb.center();
 
-        captureContext.fillStyle = 'white';
-        captureContext.fillRect(0, 0, captureSize[0], captureSize[1]);
-
-        if (reference) {
-            // Capture a test image; a tiny black-and-white drawing of the shape
-            var s = 2;
-            captureContext.setTransform(s,0, 0,s, captureXY[0], captureXY[1]);
-            captureContext.fillStyle = 'black';
-            tb.drawTrianglePaths(captureContext);
-            captureContext.setTransform(1,0,0,1,0,0);
-        } else {
+        if (!reference) {
             // Capture the reference image: what we're trying to draw
+            captureContext.fillStyle = 'white';
+            captureContext.fillRect(0, 0, captureSize[0], captureSize[1]);
             captureContext.textAlign = 'center';
             captureContext.textBaseline = 'middle';
-            captureContext.font = 'bold 40px "Futura PT"';
+            captureContext.font = 'bold 40px monospace';
             captureContext.fillStyle = 'black';
-            captureContext.fillText('Art', captureXY[0], captureXY[1]);
+            captureContext.shadowBlur = 12;
+            captureContext.shadowColor = 'black';
+            var tr = 16;
+            captureContext.fillText('A', captureXY[0] - tr, captureXY[1]);
+            captureContext.fillText('r', captureXY[0], captureXY[1]);
+            captureContext.fillText('t', captureXY[0] + tr, captureXY[1]);
+            reference = captureContext.getImageData(0, 0, captureSize[0], captureSize[1]);
         }
 
-        // Capture the tiny image
-        var img = captureContext.getImageData(0, 0, captureSize[0], captureSize[1]);
+        var numPoints = tb.numPoints;
+        var pointX = tb.pointX;
+        var pointY = tb.pointY;
+        var diff = 0;
+        for (var i = 0; i < numPoints; i++) {
+            var x = pointX[i];
+            var y = pointY[i];
+            var s = 2.0;
+            var tx = (s*x + captureXY[0])|0;
+            var ty = (s*y + captureXY[1])|0;
+            var pixel = 1 + (tx + ty * reference.width) * 4;
+            var channel = reference.data[pixel];
+            diff += channel;
+            debugSamplePoints[i] = [tx, ty, channel];
+        }
 
-        if (reference) {
-            // Compare this image to the reference, and score how well it matches
+        if (frameCount < 20 || peakDiff == null || diff / peakDiff < peakRatioThreshold) {
+            // This didn't do much harm. Keep it!
 
-            var diff = 0;
-            var a = img.data;
-            var b = reference.data;
+            peakDiff = diff;
+            peakBitstream = new Uint8Array(tb.bitstream.buffer.slice(0));
+            var hexStr = tb.toHexString();
 
-            // Look at only one channel
-            for (var i = 0, e = captureSize[0]*captureSize[1]*4; i != e; i+=4) {
-                var d = a[i] - b[i];
+            // Draw
+            largeTransform();
+            tb.draw(context);
+            noTransform();
 
-                if (d < 0) {
-                    // Decrease weight of overshoot (ref > current)
-                    d >>= 1;
-                }
-
-                diff += d*d;
+            // Draw binary pattern
+            context.fillStyle = '#fff';
+            for (var i = 0; i < tb.numBits; i++) {
+                var w = canvas.width / tb.numBits;
+                var y = canvas.height - 160;
+                var h = (1 & peakBitstream[tb.numBits-1-i]) ? 50 : 4;
+                context.fillRect(w*(i+0.4), y-h, w*0.2, h);
             }
 
-            if (peakDiff == null || diff / peakDiff < peakRatioThreshold) {
-                // This didn't do much harm. Keep it!
-
-                peakDiff = diff;
-                peakBitstream = new Uint8Array(tb.bitstream.buffer.slice(0));
-                var hexStr = tb.toHexString();
-
-                // Draw
-                largeTransform();
-                tb.draw(context);
-                noTransform();
-
-                // Draw binary pattern
-                context.fillStyle = '#fff';
-                for (var i = 0; i < tb.numBits; i++) {
-                  var w = canvas.width / tb.numBits;
-                  var y = canvas.height - 160;
-                  var h = (1 & peakBitstream[tb.numBits-1-i]) ? 50 : 4;
-                  context.fillRect(w*(i+0.4), y-h, w*0.2, h);
-                }
-
-                document.getElementById('code').textContent = hexStr;
-                result = true;
-            } else {
-                if (ghostLimit > 0) {
-                  // Draw ghost image
-                  ghostLimit--;
-                  context.strokeStyle = 'rgba(255,255,255,0.05)';
-                  context.lineWidth = this.edgeStrokeWidth;
-                  context.lineCap = 'round';
-                  largeTransform();
-                  tb.drawEdgePaths(context);
-                  noTransform();
-                }
-                // Revert to saved peak.
-                tb.bitstream = new Uint8Array(peakBitstream.buffer.slice(0));
-            }
+            document.getElementById('code').textContent = hexStr;
+            result = true;
         } else {
-            // Store a reference image
-            reference = img;
+            if (ghostLimit > 0) {
+                // Draw ghost image
+                ghostLimit--;
+                context.strokeStyle = 'rgba(255,255,255,0.09)';
+                context.lineWidth = this.edgeStrokeWidth;
+                context.lineCap = 'round';
+                largeTransform();
+                tb.drawEdgePaths(context);
+                noTransform();
+            }
+            // Revert to saved peak.
+            tb.bitstream = new Uint8Array(peakBitstream.buffer.slice(0));
         }
 
         if (frameCount > 1) {
@@ -795,26 +785,30 @@ function simulation()
 
     function frame()
     {
-        var DEBUG = false;
+        var SHOW_GOAL = false;
+        var SLOW_START = true;
 
         frameCount += 1;
-        ghostLimit = 20;
+        ghostLimit = 10;
         context.clearRect(0, 0, canvas.width, canvas.height);
         while (!cycle());
 
         // Draw comparison image and reference, for debug
-        if (DEBUG) {
+        if (SHOW_GOAL) {
             context.putImageData(reference, 0, 0);
-            context.globalAlpha = 0.5;
-            context.drawImage(captureCanvas, 0, 0);
-            context.globalAlpha = 1.0;
+            for (var i = 0; i < tb.numPoints; i++) {
+                var point = debugSamplePoints[i];
+                context.fillStyle = 'rgba('+point[2]+',0,'+(255-point[2])+',1.0)';
+                context.fillRect(point[0], point[1], 1, 1);
+            }
         }
 
-        if (DEBUG) {
-          setTimeout(frame, 0);
-        } else {
-          var delay = 10000 / (1 + frameCount * 0.1);
+        if (SLOW_START) {
+          var delay = 10000 / (1 + frameCount * 1.5);
+          if (delay < 0.1) delay = 0;
           setTimeout(frame, delay);
+        } else {
+          setTimeout(frame, 0);
         }
     }
 
@@ -855,7 +849,7 @@ function simulation()
 
 </style>
 </head>
-<body onload="simulation()">
+<body onload="setTimeout(simulation(),1000)">
     <canvas id="bitmap" width="2560" height="1440"></canvas>
     <pre id="code"></pre>
     <span id="sig">MES 2014-2021</span>
