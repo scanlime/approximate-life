@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html><head><meta http-equiv="Content-Type" content="text/html; charset=windows-1252">
 <script type="text/javascript">
+"use strict";
 
 // Design sketch for "Play" project.
 // (C) Micah Elizabeth Scott 2014
@@ -20,7 +21,7 @@ var TriangleBuilder = function()
     this.triangleFillStyle = 'rgba(255,40,200,0.3)';
     this.edgeStrokeStyle = '#e5cbe3';
     this.edgeStrokeWidth = 0.055;
-    this.borderStrokeStyle = 'rgba(80,80,50,0.01)';
+    this.borderStrokeStyle = 'rgba(80,80,80,0.015)';
     this.borderStrokeWidth = 5.0;
 
     // Force model
@@ -659,32 +660,60 @@ function simulation()
     var peakBitstream = null;
     var peakDiff = null;
 
-    // After each mutation, we measure the new image difference
-    // divided by the saved peak. If this peak ratio is < 1.0,
-    // we found an improvement. We can choose to only accept peak
-    // ratios of even lower than 1.0, to have a stricter survival
-    // criteria for mutations. Or we can allow a ratio larger than
-    // 1.0 in order to allow some detrimental mutations to survive
-    // in order to add noise to the system.
-    var peakRatioThreshold = 1.1;
-
     function mutate()
     {
         var bitstream = tb.bitstream;
         var length = bitstream.length;
-        var r = (0x7fffffff * Math.random())|0;
-        var split = 1+(r & 15);
-        r >>= 4;
-        var sides = r & 3;
-        r >>= 2;
-        if (sides & 1) bitstream[(r-split) % length] ^= 1;
-        bitstream[(r) % length] ^= 1;
-        if (sides & 2) bitstream[(r+split) % length] ^= 1;
+        var saved = bitstream.toString();
+        do {
+            var r = Math.random()
+            r *= 4;
+            switch (r|0) {
+
+                case 0: { // Single bit flip
+                    r *= length;
+                    bitstream[(r|0) % length] ^= 1;
+                    break;
+                }
+
+                case 1: { // Two different bits
+                    r *= length;
+                    var pt1 = (r|0) % length;
+                    r *= length;
+                    var pt2 = 1 + ((r|0) % (length - 1));
+                    bitstream[pt1] ^= 1;
+                    bitstream[(pt1 + pt2) % length] ^= 1;
+                    break;
+                }
+
+                case 2: { // Three different nearby bits
+                    r *= length;
+                    var pt1 = (r|0) % length;
+                    r *= length;
+                    var pt2 = 1 + ((r|0) % (length/3));
+                    bitstream[pt1] ^= 1;
+                    bitstream[(pt1 - pt2) % length] ^= 1;
+                    bitstream[(pt1 + pt2) % length] ^= 1;
+                    break;
+                }
+
+                case 3: { // Copy within
+                    r *= length;
+                    var dest = (r|0) % length;
+                    r *= length;
+                    var src = (dest + 1 + ((r|0) % (length-1))) % length;
+                    r *= length-1;
+                    var copyLen = (r|0) % Math.min(length - src, length - dest);
+                    bitstream.copyWithin(dest, src, src + copyLen);
+                    break;
+                }
+            }
+        } while (bitstream.toString() == saved);
     }
 
     function largeTransform()
     {
-        var s = 60;
+        var s = 42;
         context.setTransform(s,0, 0,s, canvas.width * 0.5, canvas.height * 0.45);
     }
 
@@ -693,7 +722,7 @@ function simulation()
         context.setTransform(1,0,0,1,0,0);
     }
 
-    function cycle()
+    function cycle( peakRatioThreshold )
     {
         var result = false;
 
@@ -713,7 +742,7 @@ function simulation()
             captureContext.fillStyle = 'black';
             captureContext.shadowBlur = 12;
             captureContext.shadowColor = 'black';
-            var tr = 18;
+            var tr = 17;
             captureContext.fillText('A', captureXY[0] - tr, captureXY[1]);
             captureContext.fillText('r', captureXY[0], captureXY[1]);
             captureContext.fillText('t', captureXY[0] + tr, captureXY[1]);
@@ -737,15 +766,17 @@ function simulation()
             }
             x /= pointsPerTriangle;
             y /= pointsPerTriangle;
-            var s = 2;
+            var s = 1.8;
             var tx = (s*x + captureXY[0])|0;
             var ty = (s*y + captureXY[1])|0;
             var pixel = 1 + (tx + ty * reference.width) * 4;
             var channel = reference.data[pixel];
-            diff += channel;
+            diff += channel/255.0;
             debugSamplePoints[i] = [tx, ty, channel];
         }
-        diff /= numTriangles;
+        // penalty for unused triangles
+        var unusedTrianglePenalty = 2.0;
+        diff += unusedTrianglePenalty * (tb.maxTriangles - tb.numTriangles);
 
         if (frameCount < 20 || peakDiff == null || diff / peakDiff < peakRatioThreshold) {
             // This didn't do much harm. Keep it!
@@ -774,8 +805,8 @@ function simulation()
             if (ghostLimit > 0) {
                 // Draw ghost image
                 ghostLimit--;
-                context.strokeStyle = 'rgba(255,255,255,0.09)';
-                context.lineWidth = this.edgeStrokeWidth;
+                context.strokeStyle = 'rgba(255,255,255,0.1)';
+                context.lineWidth = tb.edgeStrokeWidth;
                 context.lineCap = 'round';
                 largeTransform();
                 tb.drawEdgePaths(context);
@@ -796,13 +827,17 @@ function simulation()
 
     function frame()
     {
-        var SHOW_GOAL = true;
-        var SLOW_START = false;
+        var SHOW_GOAL = false;
+        var SLOW_START = true;
 
         frameCount += 1;
         ghostLimit = 10;
         context.clearRect(0, 0, canvas.width, canvas.height);
-        while (!cycle());
+
+        var peakRatioThreshold = 0.99;
+        while (!cycle(peakRatioThreshold)) {
+            peakRatioThreshold += 0.0001;
+        }
 
         // Draw comparison image and reference, for debug
         if (SHOW_GOAL) {
@@ -860,7 +895,7 @@ function simulation()
 
 </style>
 </head>
-<body onload="setTimeout(simulation(),1000)">
+<body onload="simulation()">
     <canvas id="bitmap" width="2560" height="1440"></canvas>
     <pre id="code"></pre>
     <span id="sig">MES 2014-2021</span>
