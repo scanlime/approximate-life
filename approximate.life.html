@@ -735,6 +735,7 @@ function simulation()
             diff += channel;
             debugSamplePoints[i] = [tx, ty, channel];
         }
+        diff /= numPoints;
 
         if (frameCount < 20 || peakDiff == null || diff / peakDiff < peakRatioThreshold) {
             // This didn't do much harm. Keep it!
