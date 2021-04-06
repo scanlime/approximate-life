@@ -498,6 +498,28 @@ TriangleBuilder.prototype.build = function()
     this.numTriangles = numTriangles;
 }
 
+TriangleBuilder.prototype.center = function()
+{
+  var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+  var numPoints = this.numPoints;
+  var pointX = this.pointX;
+  var pointY = this.pointY;
+  for (var i = 0; i < numPoints; i++) {
+    var x = pointX[i];
+    var y = pointY[i];
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  var centerX = (minX + maxX) * 0.5;
+  var centerY = (minY + maxY) * 0.5;
+  for (var i = 0; i < numPoints; i++) {
+    pointX[i] = pointX[i] - centerX;
+    pointY[i] = pointY[i] - centerY;
+  }
+}
+
 TriangleBuilder.prototype.simulate = function( steps )
 {
     // Simulate the forces acting on the points in this shape,
@@ -618,11 +640,12 @@ function simulation()
 {
     var tb = new TriangleBuilder();
     var frameCount = 0;
+    var ghostLimit = 0;
     var canvas = document.getElementById('bitmap');
     var context = canvas.getContext('2d');
 
     var unitRadius = canvas.width * 0.01;
-    var captureSize = [96, 96];
+    var captureSize = [64, 64];
     var captureXY = [captureSize[0]/2, captureSize[1]/2];
 
     var captureCanvas = document.createElement('canvas');
@@ -641,7 +664,7 @@ function simulation()
     // criteria for mutations. Or we can allow a ratio larger than
     // 1.0 in order to allow some detrimental mutations to survive
     // in order to add noise to the system.
-    var peakRatioThreshold = 1.002;
+    var peakRatioThreshold = 1.01;
 
     function mutate()
     {
@@ -676,6 +699,7 @@ function simulation()
         tb.clear();
         tb.build();
         tb.simulate(200);
+        tb.center();
 
         captureContext.fillStyle = 'white';
         captureContext.fillRect(0, 0, captureSize[0], captureSize[1]);
@@ -691,20 +715,10 @@ function simulation()
             // Capture the reference image: what we're trying to draw
             captureContext.textAlign = 'center';
             captureContext.textBaseline = 'middle';
-            captureContext.font = 'bold 60px "Futura PT"';
+            captureContext.font = 'bold 40px "Futura PT"';
             captureContext.fillStyle = 'black';
             captureContext.fillText('Art', captureXY[0], captureXY[1]);
         }
-
-        // Cheap blur, so we can reward near approximations
-        captureContext.globalAlpha = 0.4;
-        for (var i = 0; i < 4; i++) {
-            captureContext.drawImage(captureCanvas, -1,  0);
-            captureContext.drawImage(captureCanvas,  1,  0);
-            captureContext.drawImage(captureCanvas,  0, -1);
-            captureContext.drawImage(captureCanvas,  0, +1);
-        }
-        captureContext.globalAlpha = 1.0;
 
         // Capture the tiny image
         var img = captureContext.getImageData(0, 0, captureSize[0], captureSize[1]);
@@ -752,14 +766,16 @@ function simulation()
                 document.getElementById('code').textContent = hexStr;
                 result = true;
             } else {
-                // Draw ghost image
-                context.strokeStyle = 'rgba(255,255,255,0.05)';
-                context.lineWidth = this.edgeStrokeWidth;
-                context.lineCap = 'round';
-                largeTransform();
-                tb.drawEdgePaths(context);
-                noTransform();
-
+                if (ghostLimit > 0) {
+                  // Draw ghost image
+                  ghostLimit--;
+                  context.strokeStyle = 'rgba(255,255,255,0.05)';
+                  context.lineWidth = this.edgeStrokeWidth;
+                  context.lineCap = 'round';
+                  largeTransform();
+                  tb.drawEdgePaths(context);
+                  noTransform();
+                }
                 // Revert to saved peak.
                 tb.bitstream = new Uint8Array(peakBitstream.buffer.slice(0));
             }
@@ -782,6 +798,7 @@ function simulation()
         var DEBUG = false;
 
         frameCount += 1;
+        ghostLimit = 20;
         context.clearRect(0, 0, canvas.width, canvas.height);
         while (!cycle());
 
@@ -794,14 +811,10 @@ function simulation()
         }
 
         if (DEBUG) {
-          window.requestAnimationFrame(frame);
+          setTimeout(frame, 0);
         } else {
           var delay = 10000 / (1 + frameCount * 0.1);
-          if (delay > 0.1) {
-            setTimeout(frame, delay);
-          } else {
-            window.requestAnimationFrame(frame);
-          }
+          setTimeout(frame, delay);
         }
     }
 
