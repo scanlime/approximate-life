@@ -664,9 +664,9 @@ function Renderer(canvas) {
     const EDGE_STROKE_STYLE = '#e5cbe3';
     const EDGE_STROKE_WIDTH = 0.055;
     const GHOST_STROKE_STYLE = '#fff';
-    const GHOST_STROKE_WIDTH = 0.1;
+    const GHOST_STROKE_WIDTH = 0.03;
     const BORDER_STROKE_STYLE = '#131916';
-    const BORDER_STROKE_WIDTH = 3.0;
+    const BORDER_STROKE_WIDTH = 4.0;
 
     this.drawEdgePaths = function(state) {
         var index = 0;
@@ -747,14 +747,15 @@ function main() {
     var reference = new ReferenceImage();
     var bitstream = new Bitstream();
 
+    const GHOST_MAX_FPS = 30.0;
+    const SCORE_RATIO_THRESHOLD = 1.008;
+    const WARMUP_COUNT = 8000;
+
     var bestResponse = null;
     var ghostResponse = null;
     var responseCount = 0;
 
     var pool = new WorkerPool(reference, function (e) {
-        const SCORE_RATIO_THRESHOLD = 1.008;
-        const WARMUP_COUNT = 10000;
-
         responseCount++;
 
         var goodScore = bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD);
@@ -803,14 +804,12 @@ function main() {
         });
     }
 
-    function idleFrame() {
+    window.setInterval(function () {
         if (ghostResponse) {
             ghostLayer.ghost(ghostResponse);
             ghostResponse = null;
         }
-        window.setTimeout(idleFrame, 50);
-    }
-    idleFrame();
+    }, 1000 / GHOST_MAX_FPS);
 }
 
 </script>
