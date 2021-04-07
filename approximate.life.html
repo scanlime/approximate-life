@@ -20,8 +20,14 @@ const WORKER_SRC = `
     // How large to project our coordinates on the reference image's pixel grid
     const REFERENCE_SCALE = 0.9;
 
-    // Penalty for unused triangles. 1.0 = same as background pixels
-    const UNUSED_TRIANGLE_PENALTY = 0.5;
+    // Penalty for unused triangles. 1.0 = same as background pixels.
+    // Larger values will grow speculatively and avoid overlap, creating
+    // space filling curves. Smaller values approaching zero will result in
+    // shapes confined to the reference image but not expanding to fill it.
+    const UNUSED_TRIANGLE_PENALTY = 0.3;
+
+    // Probability for repeated mutations in a single cycle. >=1.0 will hang.
+    const REPEATED_MUTATION_PROBABILITY = 0.6;
 
     // Size of triangle memo buffer, and maximum size of shapes we can build.
     // Must be a power of two. Determines memory usage per worker.
@@ -469,15 +475,16 @@ const WORKER_SRC = `
     }
 
     function mutate(bits) {
+        var r = 0;
         do {
-            var r = Math.random();
+            r = Math.random();
             r *= 4;
             switch (r|0) {
 
                 case 0: { // Single bit flip
                     r *= NUM_BITS;
                     bits[(r|0) % NUM_BITS] ^= 1;
-                    return;
+                    break;
                 }
 
                 case 1: { // Two different bits
@@ -487,7 +494,7 @@ const WORKER_SRC = `
                     var pt2 = 1 + ((r|0) % (NUM_BITS - 1));
                     bits[pt1] ^= 1;
                     bits[(pt1 + pt2) % NUM_BITS] ^= 1;
-                    return;
+                    break;
                 }
 
                 case 2: { // Three different nearby bits
@@ -498,7 +505,7 @@ const WORKER_SRC = `
                     bits[pt1] ^= 1;
                     bits[(pt1 - pt2) % NUM_BITS] ^= 1;
                     bits[(pt1 + pt2) % NUM_BITS] ^= 1;
-                    return;
+                    break;
                 }
 
                 case 3: { // Copy within, retry on no-op
@@ -510,13 +517,13 @@ const WORKER_SRC = `
                     var copyLen = (r|0) % Math.min(NUM_BITS - src, NUM_BITS - dest);
                     var saved = bits.toString();
                     bits.copyWithin(dest, src, src + copyLen);
-                    if (bits.toString() != saved) {
-                        return;
+                    if (bits.toString() == saved) {
+                        r = 0;
                     }
                     break;
                 }
             }
-        } while (true);
+        } while ((r % 1) <= REPEATED_MUTATION_PROBABILITY);
     }
 
     self.onmessage = function (e) {
