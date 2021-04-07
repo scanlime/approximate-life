@@ -718,16 +718,16 @@ function main() {
     var bitstream = new Bitstream();
 
     var bestResponse = null;
-    var latestResponse = null;
+    var ghostResponse = null;
     var responseCount = 0;
 
     var pool = new WorkerPool(reference, bitstream, function (e) {
-        const SCORE_RATIO_THRESHOLD = 1.01;
+        const SCORE_RATIO_THRESHOLD = 1.02;
         const DEBUG = false;
         const WARMUP_COUNT = 10000;
 
         responseCount++;
-        latestResponse = e.data;
+        ghostResponse = e.data;
         if (!bestResponse || e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD) {
             bestResponse = e.data;
             bitstream.bits.set(e.data.bits);
@@ -757,10 +757,11 @@ function main() {
     });
 
     function idleFrame() {
-        if (latestResponse && latestResponse.score != bestResponse.score) {
-            ghostLayer.ghost(latestResponse);
+        if (ghostResponse) {
+            ghostLayer.ghost(ghostResponse);
+            ghostResponse = null;
         }
-        setTimeout(idleFrame, 20);
+        window.requestAnimationFrame(idleFrame);
     }
     idleFrame();
 }
