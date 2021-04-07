@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html><head><script type="text/javascript">"use strict";
 // (C) Micah Elizabeth Scott 2014 - 2021
-// Render with OBS at 2560x1440
+// Run in Chrome, capture with OBS at 2560x1440
 
-const NUM_BITS = 256;
+const NUM_BITS = 512;
 const WORKER_COUNT = 32;
 const JOB_COUNT = 40;
 const WORKER_SRC = `
@@ -31,7 +31,7 @@ const WORKER_SRC = `
     const WORLD_AREA = WORLD_SIZE * WORLD_SIZE;
 
     // Maximum triangle counts, based on maximum bitstream sizes
-    const NUM_BITS = 256;
+    const NUM_BITS = 512;
     const MAX_TRIANGLES = NUM_BITS;
 
     // Amount of simulation detail; each edge is simulated with many intermediate
@@ -580,11 +580,13 @@ function Bitstream() {
     }
 
     this.drawPattern = function(context, left, top, width, height) {
+        const THICKNESS = 0.4;
         context.fillStyle = '#fff';
         var bitWidth = width / NUM_BITS;
+        var bitThickness = bitWidth * THICKNESS;
         for (var i = 0; i < NUM_BITS; i++) {
-            var bitHeight = (1 & this.bits[i]) ? height : height/10;
-            context.fillRect(bitWidth*(i+0.4), top+height-bitHeight, bitWidth*0.2, bitHeight);
+            var bitHeight = (1 & this.bits[i]) ? height : bitThickness;
+            context.fillRect(bitWidth*(i+0.5-THICKNESS*0.5), top+height-bitHeight, bitThickness, bitHeight);
         }
     }
 
@@ -642,14 +644,14 @@ function Renderer(canvas) {
 
     const SCALE = 60;
     const CENTER_X = 0.5;
-    const CENTER_Y = 0.47;
+    const CENTER_Y = 0.5;
     const TRIANGLE_FILL_STYLE = 'rgba(255,40,200,0.3)';
     const EDGE_STROKE_STYLE = '#e5cbe3';
     const EDGE_STROKE_WIDTH = 0.055;
-    const GHOST_STROKE_STYLE = 'rgba(255,255,255,0.04)';
+    const GHOST_STROKE_STYLE = '#fff';
     const GHOST_STROKE_WIDTH = 0.055;
-    const BORDER_STROKE_STYLE = 'rgba(80,80,80,0.015)';
-    const BORDER_STROKE_WIDTH = 5.0;
+    const BORDER_STROKE_STYLE = '#131916';
+    const BORDER_STROKE_WIDTH = 3.0;
 
     this.drawEdgePaths = function(state) {
         var index = 0;
@@ -707,17 +709,18 @@ function Renderer(canvas) {
 
         context.setTransform(1,0,0,1,0,0);
 
-        e.bitstream.drawPattern(context, 0, canvas.height - 210, canvas.width, 50);
+        e.bitstream.drawPattern(context, 0, canvas.height - 148, canvas.width, 50);
 
-        context.fillStyle = '#bbb';
+        context.fillStyle = 'rgba(255,255,255,0.5)';
         context.textAlign = 'center';
         context.textBaseline = 'middle';
-        context.font = '65px "Lucida Console"';
-        context.fillText(e.bitstream.toHexString(), canvas.width/2, canvas.height - 92);
+        context.font = '36.1px "Consolas"';
+        context.fillText(e.bitstream.toHexString(), canvas.width/2, canvas.height - 62);
 
+        context.fillStyle = 'rgba(255,255,255,0.3)';
         context.font = '30px "DIN Condensed"';
         context.textAlign = 'left';
-        context.fillText("MES 2014-2021", 8, canvas.height - 16);
+        context.fillText("MES 2014-2021  //  TRI-" + NUM_BITS, 8, canvas.height - 16);
     }
 }
 
@@ -732,7 +735,7 @@ function main() {
     var responseCount = 0;
 
     var pool = new WorkerPool(reference, function (e) {
-        const SCORE_RATIO_THRESHOLD = 1.02;
+        const SCORE_RATIO_THRESHOLD = 1.008;
         const WARMUP_COUNT = 10000;
 
         responseCount++;
@@ -779,7 +782,7 @@ function main() {
             ghostLayer.ghost(ghostResponse);
             ghostResponse = null;
         }
-        window.setTimeout(idleFrame, 60);
+        window.setTimeout(idleFrame, 20);
     }
     idleFrame();
 }
@@ -795,10 +798,13 @@ function main() {
         top: 0;
         left: 0;
     }
+    #ghostLayer {
+        opacity: 0.3;
+    }
 </style>
 </head>
 <body onload="main()">
-    <canvas id="ghostLayer" width="2560" height="1440"></canvas>
     <canvas id="mainLayer" width="2560" height="1440"></canvas>
+    <canvas id="ghostLayer" width="2560" height="1440"></canvas>
 </body>
 </html>
