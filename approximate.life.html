@@ -456,9 +456,13 @@ const WORKER_SRC = `
 
             var tx = (REFERENCE_SCALE*x + imageData.width/2)|0;
             var ty = (REFERENCE_SCALE*y + imageData.height/2)|0;
-            var pixel = 1 + (tx + ty * imageData.width) * 4;
-            var channel = imageData.data[pixel];
-            score += channel/255.0;
+            if (tx >= 0 && ty >= 0 && tx <= imageData.width && ty <= imageData.height) {
+                var pixel = 1 + (tx + ty * imageData.width) * 4;
+                var channel = imageData.data[pixel];
+                score += channel/255.0;
+            } else {
+                score += 1.0;
+            }
         }
         score += UNUSED_TRIANGLE_PENALTY * (MAX_TRIANGLES - numTriangles);
         return score;
