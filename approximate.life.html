@@ -5,6 +5,7 @@
 
 const NUM_BITS = 256;
 const WORKER_COUNT = 32;
+const JOB_COUNT = 40;
 const WORKER_SRC = `
     "use strict";
 
@@ -467,6 +468,7 @@ const WORKER_SRC = `
         if (e.data.reference) {
             reference = e.data.reference;
         }
+
         if (e.data.bits) {
             clear();
             for (var bit of e.data.bits) {
@@ -474,19 +476,26 @@ const WORKER_SRC = `
             }
             simulate();
             center();
-            postMessage({
-                numTriangles,
-                numPoints,
-                numEdges,
+
+            var response = {
                 bits: e.data.bits,
                 score: calculateScore(),
-                pointX: pointX.subarray(0, numPoints),
-                pointY: pointY.subarray(0, numPoints),
-                edgePointIDs: edgePointIDs.subarray(0, numEdges * POINTS_PER_EDGE),
-                trianglePointIDs: trianglePointIDs.subarray(0, numTriangles * POINTS_PER_TRIANGLE),
-                pointsPerEdge: POINTS_PER_EDGE,
-                pointsPerTriangle: POINTS_PER_TRIANGLE
-            });
+            };
+
+            if (e.data.points) {
+                response.points = true;
+                response.numTriangles = numTriangles;
+                response.numEdges = numEdges;
+                response.numPoints = numPoints;
+                response.pointX = pointX.subarray(0, numPoints);
+                response.pointY = pointY.subarray(0, numPoints);
+                response.edgePointIDs = edgePointIDs.subarray(0, numEdges * POINTS_PER_EDGE);
+                response.trianglePointIDs = trianglePointIDs.subarray(0, numTriangles * POINTS_PER_TRIANGLE);
+                response.pointsPerEdge = POINTS_PER_EDGE;
+                response.pointsPerTriangle = POINTS_PER_TRIANGLE;
+            }
+
+            postMessage(response);
         }
     }
 `;
@@ -516,7 +525,7 @@ function ReferenceImage() {
     this.imageData = context.getImageData(0, 0, size[0], size[1]);
 }
 
-function WorkerPool(reference, bitstream, onmessage) {
+function WorkerPool(reference, onmessage) {
     const self = this;
     const workerBlob = new Blob([WORKER_SRC], {type: 'application/javascript'});
     const workerURL = URL.createObjectURL(workerBlob);
@@ -526,12 +535,13 @@ function WorkerPool(reference, bitstream, onmessage) {
     for (var i = 0; i < WORKER_COUNT; i++) {
         workers[i] = new Worker(workerURL);
         workers[i].onmessage = onmessage;
-        workers[i].postMessage({reference, bits: bitstream.bits});
+        workers[i].postMessage({reference});
     }
 
-    this.submitBitstream = function(bitstream) {
+    this.submitBitstream = function(bitstream, points) {
         workers[nextWorker].postMessage({
-            bits: bitstream.bits
+            bits: bitstream.bits,
+            points
         });
         nextWorker = (nextWorker + 1) % WORKER_COUNT;
     }
@@ -721,47 +731,55 @@ function main() {
     var ghostResponse = null;
     var responseCount = 0;
 
-    var pool = new WorkerPool(reference, bitstream, function (e) {
+    var pool = new WorkerPool(reference, function (e) {
         const SCORE_RATIO_THRESHOLD = 1.02;
-        const DEBUG = false;
         const WARMUP_COUNT = 10000;
 
         responseCount++;
-        ghostResponse = e.data;
-        if (!bestResponse || e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD) {
-            bestResponse = e.data;
-            bitstream.bits.set(e.data.bits);
 
-            if (DEBUG) {
-                console.log({
-                    responseCount,
-                    score: bestResponse.score,
+        var goodScore = bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD);
+        var wantPoints = ghostResponse == null || goodScore;
+
+        if (wantPoints && !e.data.points) {
+            // Run this one again, but request the points
+            bitstream.bits.set(e.data.bits);
+            pool.submitBitstream(bitstream, true);
+        } else {
+
+            if (ghostResponse == null && e.data.points) {
+                ghostResponse = e.data;
+            }
+
+            if (goodScore && e.data.points) {
+                bestResponse = e.data;
+                bitstream.bits.set(e.data.bits);
+
+                ghostLayer.clear();
+                mainLayer.clear();
+                mainLayer.frame({
                     response: bestResponse,
                     bitstream
                 });
             }
 
-            ghostLayer.clear();
-            mainLayer.clear();
-            mainLayer.frame({
-                response: bestResponse,
-                bitstream
-            });
+            bitstream.bits.set(bestResponse.bits);
+            if (responseCount > WARMUP_COUNT) {
+                bitstream.mutate();
+            }
+            pool.submitBitstream(bitstream, false);
         }
-
-        bitstream.bits.set(bestResponse.bits);
-        if (responseCount > WARMUP_COUNT) {
-            bitstream.mutate();
-        }
-        pool.submitBitstream(bitstream);
     });
+
+    for (var i = 0; i < JOB_COUNT; i++) {
+        pool.submitBitstream(bitstream, true);
+    }
 
     function idleFrame() {
         if (ghostResponse) {
             ghostLayer.ghost(ghostResponse);
             ghostResponse = null;
         }
-        window.requestAnimationFrame(idleFrame);
+        window.setTimeout(idleFrame, 60);
     }
     idleFrame();
 }
