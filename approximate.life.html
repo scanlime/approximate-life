@@ -18,7 +18,7 @@ const WORKER_SRC = `
     const SIMULATION_STEPS = 400;
 
     // How large to project our coordinates on the reference image's pixel grid
-    const REFERENCE_SCALE = 1.8;
+    const REFERENCE_SCALE = 0.9;
 
     // Penalty for unused triangles. 1.0 = same as background pixels
     const UNUSED_TRIANGLE_PENALTY = 0.95;
@@ -464,12 +464,67 @@ const WORKER_SRC = `
         return score;
     }
 
+    function mutate(bits) {
+        do {
+            var r = Math.random();
+            r *= 4;
+            switch (r|0) {
+
+                case 0: { // Single bit flip
+                    r *= NUM_BITS;
+                    bits[(r|0) % NUM_BITS] ^= 1;
+                    return;
+                }
+
+                case 1: { // Two different bits
+                    r *= NUM_BITS;
+                    var pt1 = (r|0) % NUM_BITS;
+                    r *= NUM_BITS;
+                    var pt2 = 1 + ((r|0) % (NUM_BITS - 1));
+                    bits[pt1] ^= 1;
+                    bits[(pt1 + pt2) % NUM_BITS] ^= 1;
+                    return;
+                }
+
+                case 2: { // Three different nearby bits
+                    r *= NUM_BITS;
+                    var pt1 = (r|0) % NUM_BITS;
+                    r *= NUM_BITS;
+                    var pt2 = 1 + ((r|0) % (NUM_BITS/3));
+                    bits[pt1] ^= 1;
+                    bits[(pt1 - pt2) % NUM_BITS] ^= 1;
+                    bits[(pt1 + pt2) % NUM_BITS] ^= 1;
+                    return;
+                }
+
+                case 3: { // Copy within, retry on no-op
+                    r *= NUM_BITS;
+                    var dest = (r|0) % NUM_BITS;
+                    r *= NUM_BITS;
+                    var src = (dest + 1 + ((r|0) % (NUM_BITS-1))) % NUM_BITS;
+                    r *= NUM_BITS-1;
+                    var copyLen = (r|0) % Math.min(NUM_BITS - src, NUM_BITS - dest);
+                    var saved = bits.toString();
+                    bits.copyWithin(dest, src, src + copyLen);
+                    if (bits.toString() != saved) {
+                        return;
+                    }
+                    break;
+                }
+            }
+        } while (true);
+    }
+
     self.onmessage = function (e) {
         if (e.data.reference) {
             reference = e.data.reference;
         }
 
         if (e.data.bits) {
+            if (e.data.mutate) {
+                mutate(e.data.bits);
+            }
+
             clear();
             for (var bit of e.data.bits) {
                 build(bit);
@@ -538,11 +593,8 @@ function WorkerPool(reference, onmessage) {
         workers[i].postMessage({reference});
     }
 
-    this.submitBitstream = function(bitstream, points) {
-        workers[nextWorker].postMessage({
-            bits: bitstream.bits,
-            points
-        });
+    this.submit = function(message) {
+        workers[nextWorker].postMessage(message);
         nextWorker = (nextWorker + 1) % WORKER_COUNT;
     }
 }
@@ -589,62 +641,14 @@ function Bitstream() {
             context.fillRect(bitWidth*(i+0.5-THICKNESS*0.5), top+height-bitHeight, bitThickness, bitHeight);
         }
     }
-
-    this.mutate = function() {
-        var saved = this.clone();
-        do {
-            var r = Math.random();
-            r *= 4;
-            switch (r|0) {
-
-                case 0: { // Single bit flip
-                    r *= NUM_BITS;
-                    this.bits[(r|0) % NUM_BITS] ^= 1;
-                    break;
-                }
-
-                case 1: { // Two different bits
-                    r *= length;
-                    var pt1 = (r|0) % NUM_BITS;
-                    r *= length;
-                    var pt2 = 1 + ((r|0) % (NUM_BITS - 1));
-                    this.bits[pt1] ^= 1;
-                    this.bits[(pt1 + pt2) % NUM_BITS] ^= 1;
-                    break;
-                }
-
-                case 2: { // Three different nearby bits
-                    r *= NUM_BITS;
-                    var pt1 = (r|0) % NUM_BITS;
-                    r *= NUM_BITS;
-                    var pt2 = 1 + ((r|0) % (NUM_BITS/3));
-                    this.bits[pt1] ^= 1;
-                    this.bits[(pt1 - pt2) % NUM_BITS] ^= 1;
-                    this.bits[(pt1 + pt2) % NUM_BITS] ^= 1;
-                    break;
-                }
-
-                case 3: { // Copy within
-                    r *= NUM_BITS;
-                    var dest = (r|0) % NUM_BITS;
-                    r *= NUM_BITS;
-                    var src = (dest + 1 + ((r|0) % (NUM_BITS-1))) % NUM_BITS;
-                    r *= NUM_BITS-1;
-                    var copyLen = (r|0) % Math.min(NUM_BITS - src, NUM_BITS - dest);
-                    this.bits.copyWithin(dest, src, src + copyLen);
-                    break;
-                }
-            }
-        } while (this.equals(saved));
-    }
 }
 
 function Renderer(canvas) {
     var context = canvas.getContext('2d');
 
-    const SCALE = 60;
+    const SCALE = 48;
     const CENTER_X = 0.5;
-    const CENTER_Y = 0.5;
+    const CENTER_Y = 0.48;
     const TRIANGLE_FILL_STYLE = 'rgba(255,40,200,0.3)';
     const EDGE_STROKE_STYLE = '#e5cbe3';
     const EDGE_STROKE_WIDTH = 0.055;
@@ -721,6 +725,8 @@ function Renderer(canvas) {
         context.font = '30px "DIN Condensed"';
         context.textAlign = 'left';
         context.fillText("MES 2014-2021  //  TRI-" + NUM_BITS, 8, canvas.height - 16);
+        context.textAlign = 'right';
+        context.fillText("#" + e.responseCount, canvas.width - 8, canvas.height - 16);
     }
 }
 
@@ -746,7 +752,11 @@ function main() {
         if (wantPoints && !e.data.points) {
             // Run this one again, but request the points
             bitstream.bits.set(e.data.bits);
-            pool.submitBitstream(bitstream, true);
+            pool.submit({
+                bits: e.data.bits,
+                points: true,
+                mutate: false,
+            });
         } else {
 
             if (ghostResponse == null && e.data.points) {
@@ -761,21 +771,25 @@ function main() {
                 mainLayer.clear();
                 mainLayer.frame({
                     response: bestResponse,
+                    responseCount: Math.max(0, responseCount - WARMUP_COUNT),
                     bitstream
                 });
             }
 
-            bitstream.bits.set(bestResponse.bits);
-            if (responseCount > WARMUP_COUNT) {
-                bitstream.mutate();
-            }
-
-            pool.submitBitstream(bitstream, ghostResponse == null);
+            pool.submit({
+                bits: bestResponse.bits,
+                points: false,
+                mutate: responseCount > WARMUP_COUNT,
+            });
         }
     });
 
     for (var i = 0; i < JOB_COUNT; i++) {
-        pool.submitBitstream(bitstream, true);
+        pool.submit({
+            bits: bitstream.bits,
+            points: true,
+            mutate: false,
+        });
     }
 
     function idleFrame() {
