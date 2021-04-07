@@ -660,11 +660,13 @@ function Renderer(canvas) {
     const SCALE = 40;
     const CENTER_X = 0.5;
     const CENTER_Y = 0.48;
+    const BACKGROUND_FILL = '#192822';
     const TRIANGLE_FILL_STYLE = 'rgba(255,40,200,0.3)';
     const EDGE_STROKE_STYLE = '#e5cbe3';
     const EDGE_STROKE_WIDTH = 0.055;
     const GHOST_STROKE_STYLE = '#fff';
-    const GHOST_STROKE_WIDTH = 0.03;
+    const GHOST_STROKE_WIDTH = 0.1;
+    const GHOST_FADE_RATE = 0.08;
     const BORDER_STROKE_STYLE = '#131916';
     const BORDER_STROKE_WIDTH = 4.0;
 
@@ -693,7 +695,10 @@ function Renderer(canvas) {
         }
     }
 
-    this.ghost = function(state) {
+    this.ghostFrame = function(state) {
+        context.fillStyle = 'rgba(0,0,0,' + GHOST_FADE_RATE + ')';
+        context.fillRect(0, 0, canvas.width, canvas.height);
+
         context.setTransform(SCALE, 0, 0, SCALE, canvas.width * CENTER_X, canvas.height * CENTER_Y);
         context.strokeStyle = GHOST_STROKE_STYLE;
         context.lineWidth = GHOST_STROKE_WIDTH;
@@ -702,11 +707,10 @@ function Renderer(canvas) {
         context.setTransform(1,0,0,1,0,0);
     }
 
-    this.clear = function() {
-        context.clearRect(0, 0, canvas.width, canvas.height);
-    }
+    this.mainFrame = function(e) {
+        context.fillStyle = BACKGROUND_FILL;
+        context.fillRect(0, 0, canvas.width, canvas.height);
 
-    this.frame = function(e) {
         context.setTransform(SCALE, 0, 0, SCALE, canvas.width * CENTER_X, canvas.height * CENTER_Y);
 
         context.strokeStyle = BORDER_STROKE_STYLE;
@@ -778,10 +782,7 @@ function main() {
             if (goodScore && e.data.points) {
                 bestResponse = e.data;
                 bitstream.bits.set(e.data.bits);
-
-                ghostLayer.clear();
-                mainLayer.clear();
-                mainLayer.frame({
+                mainLayer.mainFrame({
                     response: bestResponse,
                     responseCount: Math.max(0, responseCount - WARMUP_COUNT),
                     bitstream
@@ -806,7 +807,7 @@ function main() {
 
     window.setInterval(function () {
         if (ghostResponse) {
-            ghostLayer.ghost(ghostResponse);
+            ghostLayer.ghostFrame(ghostResponse);
             ghostResponse = null;
         }
     }, 1000 / GHOST_MAX_FPS);
@@ -815,16 +816,18 @@ function main() {
 </script>
 <style type="text/css">
     body {
-        background: #192822;
+        background: #800;
         overflow: hidden;
     }
     canvas  {
         position: absolute;
         top: 0;
         left: 0;
+        isolation: isolate;
     }
     #ghostLayer {
-        opacity: 0.15;
+        mix-blend-mode: lighten;
+        opacity: 0.2;
     }
 </style>
 </head>
