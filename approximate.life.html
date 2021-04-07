@@ -655,12 +655,12 @@ function Bitstream() {
 }
 
 function Renderer(canvas) {
+    this.canvas = canvas;
     var context = canvas.getContext('2d');
 
     const SCALE = 40;
     const CENTER_X = 0.5;
     const CENTER_Y = 0.48;
-    const BACKGROUND_FILL = '#192822';
     const TRIANGLE_FILL_STYLE = 'rgba(255,40,200,0.3)';
     const EDGE_STROKE_STYLE = '#e5cbe3';
     const EDGE_STROKE_WIDTH = 0.055;
@@ -669,6 +669,7 @@ function Renderer(canvas) {
     const GHOST_FADE_RATE = 0.08;
     const BORDER_STROKE_STYLE = '#131916';
     const BORDER_STROKE_WIDTH = 4.0;
+    const ROLLING_CHART_OPACITY = 0.2;
 
     this.drawEdgePaths = function(state) {
         var index = 0;
@@ -695,6 +696,10 @@ function Renderer(canvas) {
         }
     }
 
+    this.clear = function() {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
     this.ghostFrame = function(state) {
         context.fillStyle = 'rgba(0,0,0,' + GHOST_FADE_RATE + ')';
         context.fillRect(0, 0, canvas.width, canvas.height);
@@ -707,28 +712,39 @@ function Renderer(canvas) {
         context.setTransform(1,0,0,1,0,0);
     }
 
-    this.mainFrame = function(e) {
-        context.fillStyle = BACKGROUND_FILL;
-        context.fillRect(0, 0, canvas.width, canvas.height);
-
+    this.solidFrame = function(state) {
         context.setTransform(SCALE, 0, 0, SCALE, canvas.width * CENTER_X, canvas.height * CENTER_Y);
 
         context.strokeStyle = BORDER_STROKE_STYLE;
         context.lineWidth = BORDER_STROKE_WIDTH;
         context.lineCap = 'round';
-        this.drawEdgePaths(e.response);
+        this.drawEdgePaths(state);
 
         context.fillStyle = TRIANGLE_FILL_STYLE;
-        this.drawTrianglePaths(e.response);
+        this.drawTrianglePaths(state);
 
         context.strokeStyle = EDGE_STROKE_STYLE;
         context.lineWidth = EDGE_STROKE_WIDTH;
         context.lineCap = 'round';
-        this.drawEdgePaths(e.response);
+        this.drawEdgePaths(state);
 
         context.setTransform(1,0,0,1,0,0);
+    }
 
-        e.bitstream.drawPattern(context, 0, canvas.height - 148, canvas.width, 50);
+    this.infoFrame = function(e) {
+        var scrollHeight = canvas.height - 155;
+        var scrollRate = 1.0;
+        var patternY = canvas.height - 148;
+
+        // Copy a new row from the pattern drawing into the rolling chart
+        context.globalAlpha = ROLLING_CHART_OPACITY;
+        context.drawImage(e.previousFrame, 0, patternY, canvas.width, scrollRate, 0, scrollHeight - scrollRate, canvas.width, scrollRate);
+        context.globalAlpha = 1.0;
+
+        // Scroll the bulk of the rolling chart
+        context.drawImage(e.previousFrame, 0, scrollRate, canvas.width, scrollHeight, 0, 0, canvas.width, scrollHeight);
+
+        e.bitstream.drawPattern(context, 0, patternY, canvas.width, 50);
 
         context.fillStyle = 'rgba(255,255,255,0.5)';
         context.textAlign = 'center';
@@ -746,18 +762,24 @@ function Renderer(canvas) {
 }
 
 function main() {
-    var mainLayer = new Renderer(document.getElementById('mainLayer'));
-    var ghostLayer = new Renderer(document.getElementById('ghostLayer'));
-    var reference = new ReferenceImage();
-    var bitstream = new Bitstream();
-
     const GHOST_MAX_FPS = 30.0;
     const SCORE_RATIO_THRESHOLD = 1.008;
-    const WARMUP_COUNT = 8000;
+    const WARMUP_COUNT = 2000;
+
+    var infoLayers = [
+        new Renderer(document.getElementById('info0Layer')),
+        new Renderer(document.getElementById('info1Layer')),
+    ];
+    var midLayer = new Renderer(document.getElementById('midLayer'));
+    var ghostLayer = new Renderer(document.getElementById('ghostLayer'));
+
+    var reference = new ReferenceImage();
+    var bitstream = new Bitstream();
 
     var bestResponse = null;
     var ghostResponse = null;
     var responseCount = 0;
+    var infoLayerToggle = 0;
 
     var pool = new WorkerPool(reference, function (e) {
         responseCount++;
@@ -782,11 +804,15 @@ function main() {
             if (goodScore && e.data.points) {
                 bestResponse = e.data;
                 bitstream.bits.set(e.data.bits);
-                mainLayer.mainFrame({
-                    response: bestResponse,
+                midLayer.clear();
+                midLayer.solidFrame(bestResponse);
+                infoLayers[infoLayerToggle].infoFrame({
+                    previousFrame: infoLayers[infoLayerToggle^1].canvas,
                     responseCount: Math.max(0, responseCount - WARMUP_COUNT),
                     bitstream
                 });
+                infoLayerToggle ^= 1;
+                infoLayers[infoLayerToggle].clear();
             }
 
             pool.submit({
@@ -824,6 +850,9 @@ function main() {
         top: 0;
         left: 0;
     }
+    #info0Layer {
+        background: #192822;
+    }
     #ghostLayer {
         mix-blend-mode: lighten;
         opacity: 0.2;
@@ -831,7 +860,9 @@ function main() {
 </style>
 </head>
 <body onload="main()">
-    <canvas id="mainLayer" width="2560" height="1440"></canvas>
+    <canvas id="info0Layer" width="2560" height="1440"></canvas>
+    <canvas id="info1Layer" width="2560" height="1440"></canvas>
+    <canvas id="midLayer"   width="2560" height="1440"></canvas>
     <canvas id="ghostLayer" width="2560" height="1440"></canvas>
 </body>
 </html>
