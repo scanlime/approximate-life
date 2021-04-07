@@ -19,8 +19,8 @@ const WORKER_SRC = `
     // How large to project our coordinates on the reference image's pixel grid
     const REFERENCE_SCALE = 1.8;
 
-    // Penalty for unused triangles
-    const UNUSED_TRIANGLE_PENALTY = 2.0;
+    // Penalty for unused triangles. 1.0 = same as background pixels
+    const UNUSED_TRIANGLE_PENALTY = 0.95;
 
     // Size of triangle memo buffer, and maximum size of shapes we can build.
     // Must be a power of two. Determines memory usage per worker.
