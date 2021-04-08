@@ -3,6 +3,7 @@
 // (C) Micah Elizabeth Scott 2014 - 2021
 // Run in Chrome, capture with OBS at 2560x1440
 
+const RESOLUTION = [2560, 1440];
 const NUM_BITS = 512;
 const WORKER_COUNT = 20;
 const JOB_COUNT = 40;
@@ -655,6 +656,8 @@ function Bitstream() {
 }
 
 function Renderer(canvas) {
+    canvas.width = RESOLUTION[0];
+    canvas.height = RESOLUTION[1];
     this.canvas = canvas;
     var context = canvas.getContext('2d');
 
@@ -764,7 +767,7 @@ function Renderer(canvas) {
 function main() {
     const GHOST_MAX_FPS = 30.0;
     const SCORE_RATIO_THRESHOLD = 1.008;
-    const WARMUP_COUNT = 2000;
+    const WARMUP_COUNT = 8000;
 
     var infoLayers = [
         new Renderer(document.getElementById('info0Layer')),
@@ -860,9 +863,9 @@ function main() {
 </style>
 </head>
 <body onload="main()">
-    <canvas id="info0Layer" width="2560" height="1440"></canvas>
-    <canvas id="info1Layer" width="2560" height="1440"></canvas>
-    <canvas id="midLayer"   width="2560" height="1440"></canvas>
-    <canvas id="ghostLayer" width="2560" height="1440"></canvas>
+    <canvas id="info0Layer"></canvas>
+    <canvas id="info1Layer"></canvas>
+    <canvas id="midLayer"></canvas>
+    <canvas id="ghostLayer"></canvas>
 </body>
 </html>
