@@ -651,15 +651,13 @@ function ReferenceImage() {
     var fontSize = canvas.height*1.03;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.font = `bold ${fontSize}px "Consolas"`;
+    context.font = `${fontSize}px "DIN Condensed"`;
     context.fillStyle = 'black';
 
-    const tracking = fontSize*0.43;
-    const x = canvas.width * 0.52;
+    const x = canvas.width * 0.5;
     const y = canvas.height * 0.57;
-    context.fillText('A', x - tracking, y);
-    context.fillText('r', x, y);
-    context.fillText('t', x + tracking, y);
+    context.fillText('acab', x, y);
+
     this.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 }
 
