@@ -21,12 +21,6 @@ const WORKER_SRC = `
     // How large to project our coordinates on the reference image's pixel grid
     const REFERENCE_SCALE = 0.9;
 
-    // Penalty for unused triangles. 1.0 = same as background pixels.
-    // Larger values will grow speculatively and avoid overlap, creating
-    // space filling curves. Smaller values approaching zero will result in
-    // shapes confined to the reference image but not expanding to fill it.
-    const UNUSED_TRIANGLE_PENALTY = 0.3;
-
     // Probability for repeated mutations in a single cycle. >=1.0 will hang.
     const REPEATED_MUTATION_PROBABILITY = 0.6;
 
@@ -110,7 +104,7 @@ const WORKER_SRC = `
         numEdges = 0;
         numPoints = 0;
         numTriangles = 0;
-        generation++;
+        generation = (generation + 1) & 0x7fffffff;
     }
 
     // Look for a point at the integer grid location (x, y). Return its ID.
@@ -347,6 +341,7 @@ const WORKER_SRC = `
 
     // Simulate the forces acting on the points in this shape,
     // running a number of iterations in succession.
+
     function simulate() {
         var steps = SIMULATION_STEPS;
         while (steps > 0) {
@@ -444,12 +439,23 @@ const WORKER_SRC = `
         }
     }
 
+    // Calculate a score. Roughly what we want is to measure the difference between
+    // the image we'd get from rendering the current buffer, and the reference image.
+    // It's much faster if we can calculate an approximation without actually rendering
+    // the image.
+    //
+    // This approximation uses a sum of parts:
+    //  1. Sampled reference pixels for each triangle centroid, for fine position sensitivity
+    //  2. Penalty (inverse pixel) for all reference pixels missed by the triangle centroids
+
     var reference = null;
+    var refCoverage = null;
+
     function calculateScore() {
         var score = 1.0;
         var imageData = reference.imageData;
-        for (var i = 0; i < numTriangles; i++) {
 
+        for (var i = 0; i < numTriangles; i++) {
             // Centroid for each triangle
             var x = 0;
             var y = 0;
@@ -464,16 +470,38 @@ const WORKER_SRC = `
             var tx = (REFERENCE_SCALE*x + imageData.width/2)|0;
             var ty = (REFERENCE_SCALE*y + imageData.height/2)|0;
             if (tx >= 0 && ty >= 0 && tx < imageData.width && ty < imageData.height) {
-                var pixel = 1 + (tx + ty * imageData.width) * 4;
-                var channel = imageData.data[pixel];
+
+                // Sample score from reference image
+                var pixel = tx + ty * imageData.width;
+                var channel = imageData.data[1 + 4*pixel];
                 score += channel/255.0;
+
+                // Update coverage map
+                refCoverage[pixel] = generation;
+
             } else {
+                // Outside the image; background score
                 score += 1.0;
             }
         }
-        score += UNUSED_TRIANGLE_PENALTY * (MAX_TRIANGLES - numTriangles);
+
+        for (var i = 0; i < refCoverage.length; i++) {
+            if (refCoverage[i] != generation) {
+                // This pixel was not hit above, sample inverse score.
+                // This does not penalize for missing background (255) pixels,
+                // but it adds a penalty for failing to cover active (0) pixels.
+
+                var channel = imageData.data[1 + 4*i];
+                score += 1.0 - channel/255.0;
+            }
+        }
+
         return score;
     }
+
+    // Mutate the bitstream at least once. The result will almost certainly be different
+    // from the input, but this is not strictly guaranteed. (e.g. in the case of repeated
+    // mutations that cancel each other out)
 
     function mutate(bits) {
         var r = 0;
@@ -527,11 +555,19 @@ const WORKER_SRC = `
         } while ((r % 1) <= REPEATED_MUTATION_PROBABILITY);
     }
 
+    // Handle incoming messages from the main thread, mostly
+    // bitstreams we are asked to simulate. Normally only a score is
+    // returned, to save on the cost of copying result buffers across threads.
+
     self.onmessage = function (e) {
+
+        // Request to store a new reference image
         if (e.data.reference) {
             reference = e.data.reference;
+            refCoverage = new Uint32Array(reference.imageData.width * reference.imageData.height);
         }
 
+        // Request to simulate a bitstream
         if (e.data.bits) {
             if (e.data.mutate) {
                 mutate(e.data.bits);
@@ -549,6 +585,7 @@ const WORKER_SRC = `
                 score: calculateScore(),
             };
 
+            // Optionally return full vector data
             if (e.data.points) {
                 response.points = true;
                 response.numTriangles = numTriangles;
@@ -745,14 +782,15 @@ function Renderer(canvas) {
         context.textAlign = 'left';
         context.fillText("MES 2014-2021  //  TRI-" + NUM_BITS, 8, canvas.height - 16);
         context.textAlign = 'right';
-        context.fillText("#" + e.responseCount, canvas.width - 8, canvas.height - 16);
+        context.fillText("#" + e.visibleCounter, canvas.width - 8, canvas.height - 16);
     }
 }
 
 function main() {
     const GHOST_MAX_FPS = 10.0;
     const SCORE_RATIO_THRESHOLD = 1.008;
-    const WARMUP_COUNT = 8000;
+    const WARMUP_COUNT = 4000;
+    const COUNTER_FREEZE_DURATION = 1000;
 
     var infoLayers = [
         new Renderer(document.getElementById('info0Layer')),
@@ -789,13 +827,17 @@ function main() {
             }
 
             if (goodScore && e.data.points) {
+                var visibleCounter = responseCount - WARMUP_COUNT;
+                if (visibleCounter > -COUNTER_FREEZE_DURATION && visibleCounter < 0) {
+                    visibleCounter = 0;
+                }
                 bestResponse = e.data;
                 bitstream.bits.set(e.data.bits);
                 midLayer.clear();
                 midLayer.solidFrame(bestResponse);
                 infoLayers[infoLayerToggle].infoFrame({
                     previousFrame: infoLayers[infoLayerToggle^1].canvas,
-                    responseCount: Math.max(0, responseCount - WARMUP_COUNT),
+                    visibleCounter,
                     bitstream
                 });
                 infoLayerToggle ^= 1;
