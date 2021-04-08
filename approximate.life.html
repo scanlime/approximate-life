@@ -25,7 +25,7 @@ const WORKER_SRC = `
     const REPEATED_MUTATION_PROBABILITY = 0.3;
 
     // Overall weight for missed pixel score penalties
-    const MISSED_COVERAGE_PENALTY = 1e2;
+    const MISSED_COVERAGE_PENALTY = 40.0;
 
     // Size of triangle memo buffer, and maximum size of shapes we can build.
     // Must be a power of two. Determines memory usage per worker.
@@ -853,15 +853,15 @@ function Renderer(canvas, resolution) {
         context.fillStyle = 'rgba(255,255,255,0.3)';
         context.font = '30px "DIN Condensed"';
         context.textAlign = 'left';
-        context.fillText("MES 2014-2021  //  TRI-" + NUM_BITS, 8, canvas.height - 16);
+        context.fillText(`MES 2014-2021  //  TRI-${NUM_BITS}`, 10, canvas.height - 16);
         context.textAlign = 'right';
-        context.fillText("#" + e.visibleCounter, canvas.width - 8, canvas.height - 16);
+        context.fillText(`#${e.visibleCounter}`, canvas.width - 10, canvas.height - 16);
     }
 }
 
 function main() {
     const GHOST_MAX_FPS = 5.0;
-    const SCORE_RATIO_THRESHOLD = 1.008;
+    const SCORE_RATIO_THRESHOLD = 1.012;
     const WARMUP_COUNT = 20000;
     const COUNTER_FREEZE_DURATION = 10000;
     const DEBUG_RESOLUTION = [800, 120];
