@@ -653,8 +653,8 @@ function Renderer(canvas) {
     const EDGE_STROKE_STYLE = '#e5cbe3';
     const EDGE_STROKE_WIDTH = 0.055;
     const GHOST_STROKE_STYLE = '#fff';
-    const GHOST_STROKE_WIDTH = 0.1;
-    const GHOST_FADE_RATE = 0.08;
+    const GHOST_STROKE_WIDTH = 0.15;
+    const GHOST_FADE_RATE = 0.2;
     const BORDER_STROKE_STYLE = '#131916';
     const BORDER_STROKE_WIDTH = 4.0;
     const ROLLING_CHART_OPACITY = 0.2;
@@ -750,7 +750,7 @@ function Renderer(canvas) {
 }
 
 function main() {
-    const GHOST_MAX_FPS = 30.0;
+    const GHOST_MAX_FPS = 10.0;
     const SCORE_RATIO_THRESHOLD = 1.008;
     const WARMUP_COUNT = 8000;
 
@@ -842,7 +842,7 @@ function main() {
     }
     #ghostLayer {
         mix-blend-mode: lighten;
-        opacity: 0.2;
+        opacity: 0.12;
     }
 </style>
 </head>
