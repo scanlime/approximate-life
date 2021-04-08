@@ -19,10 +19,10 @@ const WORKER_SRC = `
     const SIMULATION_STEPS = 400;
 
     // How large to project our coordinates on the reference image's pixel grid
-    const REFERENCE_SCALE = 0.9;
+    const REFERENCE_SCALE = 1.2;
 
     // Probability for repeated mutations in a single cycle. >=1.0 will hang.
-    const REPEATED_MUTATION_PROBABILITY = 0.6;
+    const REPEATED_MUTATION_PROBABILITY = 0.3;
 
     // Overall weight for missed pixel score penalties
     const MISSED_COVERAGE_PENALTY = 1e2;
@@ -538,10 +538,11 @@ const WORKER_SRC = `
 
     function mutate(bits) {
         var r = 0;
+        var mutations = [];
         do {
             r = Math.random();
-            r *= 4;
-            switch (r|0) {
+            mutations.push(r);
+            switch ((r *= 4)|0) {
 
                 case 0: { // Single bit flip
                     r *= NUM_BITS;
@@ -586,6 +587,7 @@ const WORKER_SRC = `
                 }
             }
         } while ((r % 1) <= REPEATED_MUTATION_PROBABILITY);
+        return mutations;
     }
 
     // Handle incoming messages from the main thread, mostly
@@ -602,8 +604,11 @@ const WORKER_SRC = `
 
         // Request to simulate a bitstream
         if (e.data.bits) {
+            var response = {
+                bits: e.data.bits
+            };
             if (e.data.mutate) {
-                mutate(e.data.bits);
+                response.mutations = mutate(e.data.bits);
             }
 
             clear();
@@ -612,11 +617,7 @@ const WORKER_SRC = `
             }
             simulate();
             center();
-
-            var response = {
-                bits: e.data.bits,
-                score: calculateScore(),
-            };
+            response.score = calculateScore();
 
             // Optionally return full vector data
             if (e.data.points) {
@@ -716,7 +717,7 @@ function Renderer(canvas, resolution) {
     this.canvas = canvas;
     var context = canvas.getContext('2d');
 
-    const SCALE = 40;
+    const SCALE = 55;
     const CENTER_X = 0.5;
     const CENTER_Y = 0.48;
     const TRIANGLE_FILL_STYLE = 'rgba(255,40,200,0.3)';
@@ -765,20 +766,25 @@ function Renderer(canvas, resolution) {
         context.putImageData(imageData, 0, 0);
 
         var debugText = [
-            `Response Counter: ${e.visibleCounter}`,
+            `Response counter: ${e.visibleCounter}`,
             `Score: ${bestResponse.score}`,
             `Triangles: ${bestResponse.numTriangles}`,
             `Edges: ${bestResponse.numEdges}`,
             `Points: ${bestResponse.numPoints}`,
+            'Last good mutation:',
+            `${e.goodMutation}`,
         ];
 
+        var debugSize = 14;
+        var lineSpacing = 1.2;
         context.fillStyle = '#fff';
         context.textAlign = 'left';
-        context.textBaseline = 'middle';
-        context.font = '14px "Consolas"';
-        var y = 0;
+        context.textBaseline = 'top';
+        context.font = `${debugSize}px "Consolas"`;
+        var y = 2;
         for (var line of debugText) {
-            context.fillText(line, imageData.width + 10, y += 20);
+            context.fillText(line, imageData.width + 10, y);
+            y += debugSize * lineSpacing;
         }
 
         for (var i = 0; i < bestResponse.numTriangles; i++) {
@@ -856,11 +862,11 @@ function Renderer(canvas, resolution) {
 }
 
 function main() {
-    const GHOST_MAX_FPS = 10.0;
+    const GHOST_MAX_FPS = 15.0;
     const SCORE_RATIO_THRESHOLD = 1.008;
     const WARMUP_COUNT = 20000;
     const COUNTER_FREEZE_DURATION = 10000;
-    const DEBUG_RESOLUTION = [512, 128];
+    const DEBUG_RESOLUTION = [800, 120];
 
     var infoLayers = [
         new Renderer(document.getElementById('info0Layer'), RESOLUTION),
@@ -877,12 +883,18 @@ function main() {
     var ghostResponse = null;
     var responseCount = 0;
     var infoLayerToggle = 0;
+    var goodMutation = null;
 
     var pool = new WorkerPool(reference, function (e) {
         responseCount++;
 
         var goodScore = bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD);
         var wantPoints = ghostResponse == null || goodScore;
+
+        // Save info about good mutations, for debugging
+        if (goodScore && e.data.mutations) {
+            goodMutation = e.data.mutations;
+        }
 
         if (wantPoints && !e.data.points) {
             // Run this one again, but request the points
@@ -909,7 +921,8 @@ function main() {
                 debugLayer.debugFrame({
                     reference,
                     visibleCounter,
-                    bestResponse
+                    bestResponse,
+                    goodMutation,
                 });
 
                 midLayer.clear();
