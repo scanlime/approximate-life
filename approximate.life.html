@@ -5,8 +5,8 @@
 
 const RESOLUTION = [2560, 1440];
 const NUM_BITS = 512;
-const WORKER_COUNT = 32;
-const JOB_COUNT = 64;
+const WORKER_COUNT = 20;
+const JOB_COUNT = 40;
 const WORKER_SRC = `
     "use strict";
 
@@ -24,8 +24,8 @@ const WORKER_SRC = `
     // Probability for repeated mutations in a single cycle. >=1.0 will hang.
     const REPEATED_MUTATION_PROBABILITY = 0.6;
 
-    // Scale for missed pixel score penalty, relative to hit pixel
-    const MISSED_COVERAGE_PENALTY = 5.0;
+    // Overall weight for missed pixel score penalties
+    const MISSED_COVERAGE_PENALTY = 1e3;
 
     // Size of triangle memo buffer, and maximum size of shapes we can build.
     // Must be a power of two. Determines memory usage per worker.
@@ -90,6 +90,13 @@ const WORKER_SRC = `
 
     // Triangle ID -> Fixed size list of Point IDs in winding order
     var trianglePointIDs = new Uint32Array(MAX_POINTS);
+
+    // Reusable temporary buffers for calculating triangle centroids
+    var centroidTempX = new Float64Array(MAX_TRIANGLES);
+    var centroidTempY = new Float64Array(MAX_TRIANGLES);
+
+    // Triangle ID -> packed X, Y, brightness
+    var debugSamples = new Uint32Array(MAX_TRIANGLES);
 
     // Triangle builder state
     var turtleX = null;
@@ -458,8 +465,8 @@ const WORKER_SRC = `
         var score = 1.0;
         var imageData = reference.imageData;
 
+        // Sample centroids, saving those locations for below
         for (var i = 0; i < numTriangles; i++) {
-            // Centroid for each triangle
             var x = 0;
             var y = 0;
             for (var j = 0; j < POINTS_PER_TRIANGLE; j++) {
@@ -467,11 +474,13 @@ const WORKER_SRC = `
                 x += pointX[pt];
                 y += pointY[pt];
             }
-            x /= POINTS_PER_TRIANGLE;
-            y /= POINTS_PER_TRIANGLE;
+            x = x / POINTS_PER_TRIANGLE * REFERENCE_SCALE + imageData.width / 2;
+            y = y / POINTS_PER_TRIANGLE * REFERENCE_SCALE + imageData.height / 2;
+            centroidTempX[i] = x;
+            centroidTempY[i] = y;
 
-            var tx = (REFERENCE_SCALE*x + imageData.width/2)|0;
-            var ty = (REFERENCE_SCALE*y + imageData.height/2)|0;
+            var tx = x|0;
+            var ty = y|0;
             if (tx >= 0 && ty >= 0 && tx < imageData.width && ty < imageData.height) {
 
                 // Sample score from reference image
@@ -482,23 +491,44 @@ const WORKER_SRC = `
                 // Update coverage map
                 refCoverage[pixel] = generation;
 
+                debugSamples[i] = (pixel << 8) | channel;
+
             } else {
                 // Outside the image; background score
                 score += 1.0;
+                debugSamples[i] = 0xffffffff;
             }
         }
 
+        // Now sample pixels we missed above
         for (var i = 0; i < refCoverage.length; i++) {
             if (refCoverage[i] != generation) {
+
                 // This pixel was not hit above, sample inverse score.
                 // This does not penalize for missing background (255) pixels,
                 // but it adds a penalty for failing to cover active (0) pixels.
+                // Penalties are weighted according to the squared distance
+                // between the missed pixel and the closest triangle.
 
                 var channel = imageData.data[1 + 4*i];
-                score += (1.0 - channel/255.0) * MISSED_COVERAGE_PENALTY;
+                if (channel <= 254) {
+                    var tx = (i % imageData.width)|0;
+                    var ty = (i / imageData.width)|0;
+
+                    var closestCentroidDistSquared = 1e9;
+                    for (var j = 0; j < numTriangles; j++) {
+                        var dx = tx - centroidTempX[j];
+                        var dy = ty - centroidTempY[j];
+                        var distSquared = dx*dx + dy*dy;
+                        if (distSquared < closestCentroidDistSquared) {
+                            closestCentroidDistSquared = distSquared;
+                        }
+                    }
+
+                    score += (1.0 - channel/255.0) * (1 + closestCentroidDistSquared) * MISSED_COVERAGE_PENALTY / refCoverage.length;
+                }
             }
         }
-
         return score;
     }
 
@@ -598,6 +628,7 @@ const WORKER_SRC = `
                 response.pointY = pointY.subarray(0, numPoints);
                 response.edgePointIDs = edgePointIDs.subarray(0, numEdges * POINTS_PER_EDGE);
                 response.trianglePointIDs = trianglePointIDs.subarray(0, numTriangles * POINTS_PER_TRIANGLE);
+                response.debugSamples = debugSamples.subarray(0, numTriangles);
                 response.pointsPerEdge = POINTS_PER_EDGE;
                 response.pointsPerTriangle = POINTS_PER_TRIANGLE;
             }
@@ -608,28 +639,27 @@ const WORKER_SRC = `
 `;
 
 function ReferenceImage() {
-    var size = [64, 64];
-    var center = [size[0]/2, size[1]/2];
-
     var canvas = document.createElement('canvas');
-    canvas.width = size[0];
-    canvas.height = size[1];
-    var context = canvas.getContext('2d');
+    canvas.width = 50;
+    canvas.height = 32;
 
+    var context = canvas.getContext('2d');
     context.fillStyle = 'white';
-    context.fillRect(0, 0, size[0], size[1]);
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    var fontSize = canvas.height*1.03;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.font = 'bold 40px monospace';
+    context.font = `bold ${fontSize}px "Consolas"`;
     context.fillStyle = 'black';
-    context.shadowBlur = 12;
-    context.shadowColor = 'black';
 
-    const tracking = 17;
-    context.fillText('A', center[0] - tracking, center[1]);
-    context.fillText('r', center[0], center[1]);
-    context.fillText('t', center[0] + tracking, center[1]);
-    this.imageData = context.getImageData(0, 0, size[0], size[1]);
+    const tracking = fontSize*0.43;
+    const x = canvas.width * 0.52;
+    const y = canvas.height * 0.57;
+    context.fillText('A', x - tracking, y);
+    context.fillText('r', x, y);
+    context.fillText('t', x + tracking, y);
+    this.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 }
 
 function WorkerPool(reference, onmessage) {
@@ -680,9 +710,9 @@ function Bitstream() {
     }
 }
 
-function Renderer(canvas) {
-    canvas.width = RESOLUTION[0];
-    canvas.height = RESOLUTION[1];
+function Renderer(canvas, resolution) {
+    canvas.width = resolution[0];
+    canvas.height = resolution[1];
     this.canvas = canvas;
     var context = canvas.getContext('2d');
 
@@ -728,8 +758,44 @@ function Renderer(canvas) {
         context.clearRect(0, 0, canvas.width, canvas.height);
     }
 
+    this.debugFrame = function(e) {
+        var imageData = e.reference.imageData;
+        var bestResponse = e.bestResponse;
+
+        context.putImageData(imageData, 0, 0);
+
+        var debugText = [
+            `Response Counter: ${e.visibleCounter}`,
+            `Score: ${bestResponse.score}`,
+            `Triangles: ${bestResponse.numTriangles}`,
+            `Edges: ${bestResponse.numEdges}`,
+            `Points: ${bestResponse.numPoints}`,
+        ];
+
+        context.fillStyle = '#fff';
+        context.textAlign = 'left';
+        context.textBaseline = 'middle';
+        context.font = '14px "Consolas"';
+        var y = 0;
+        for (var line of debugText) {
+            context.fillText(line, imageData.width + 10, y += 20);
+        }
+
+        for (var i = 0; i < bestResponse.numTriangles; i++) {
+            var debug = bestResponse.debugSamples[i];
+
+            var channel = debug & 0xFF;
+            var pixel = debug >> 8;
+            var px = (pixel % imageData.width)|0;
+            var py = (pixel / imageData.width)|0;
+
+            context.fillStyle = `rgba(${channel},${255-channel},0,0.3)`;
+            context.fillRect(px, py, 2, 2);
+        }
+    }
+
     this.ghostFrame = function(state) {
-        context.fillStyle = 'rgba(0,0,0,' + GHOST_FADE_RATE + ')';
+        context.fillStyle = `rgba(0,0,0,${GHOST_FADE_RATE})`;
         context.fillRect(0, 0, canvas.width, canvas.height);
 
         context.setTransform(SCALE, 0, 0, SCALE, canvas.width * CENTER_X, canvas.height * CENTER_Y);
@@ -794,13 +860,15 @@ function main() {
     const SCORE_RATIO_THRESHOLD = 1.008;
     const WARMUP_COUNT = 20000;
     const COUNTER_FREEZE_DURATION = 10000;
+    const DEBUG_RESOLUTION = [512, 128];
 
     var infoLayers = [
-        new Renderer(document.getElementById('info0Layer')),
-        new Renderer(document.getElementById('info1Layer')),
+        new Renderer(document.getElementById('info0Layer'), RESOLUTION),
+        new Renderer(document.getElementById('info1Layer'), RESOLUTION),
     ];
-    var midLayer = new Renderer(document.getElementById('midLayer'));
-    var ghostLayer = new Renderer(document.getElementById('ghostLayer'));
+    var midLayer = new Renderer(document.getElementById('midLayer'), RESOLUTION);
+    var ghostLayer = new Renderer(document.getElementById('ghostLayer'), RESOLUTION);
+    var debugLayer = new Renderer(document.getElementById('debugLayer'), DEBUG_RESOLUTION);
 
     var reference = new ReferenceImage();
     var bitstream = new Bitstream();
@@ -836,8 +904,17 @@ function main() {
                 }
                 bestResponse = e.data;
                 bitstream.bits.set(e.data.bits);
+
+                debugLayer.clear();
+                debugLayer.debugFrame({
+                    reference,
+                    visibleCounter,
+                    bestResponse
+                });
+
                 midLayer.clear();
                 midLayer.solidFrame(bestResponse);
+
                 infoLayers[infoLayerToggle].infoFrame({
                     previousFrame: infoLayers[infoLayerToggle^1].canvas,
                     visibleCounter,
@@ -889,9 +966,15 @@ function main() {
         mix-blend-mode: lighten;
         opacity: 0.12;
     }
+    #debugLayer {
+        background: black;
+        top: 1460px;
+        left: 20px;
+    }
 </style>
 </head>
 <body onload="main()">
+    <canvas id="debugLayer"></canvas>
     <canvas id="info0Layer"></canvas>
     <canvas id="info1Layer"></canvas>
     <canvas id="midLayer"></canvas>
