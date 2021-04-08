@@ -24,6 +24,9 @@ const WORKER_SRC = `
     // Probability for repeated mutations in a single cycle. >=1.0 will hang.
     const REPEATED_MUTATION_PROBABILITY = 0.6;
 
+    // Scale for missed pixel score penalty, relative to hit pixel
+    const MISSED_COVERAGE_PENALTY = 5.0;
+
     // Size of triangle memo buffer, and maximum size of shapes we can build.
     // Must be a power of two. Determines memory usage per worker.
     const WORLD_SIZE_LOG2 = 9;
@@ -492,7 +495,7 @@ const WORKER_SRC = `
                 // but it adds a penalty for failing to cover active (0) pixels.
 
                 var channel = imageData.data[1 + 4*i];
-                score += 1.0 - channel/255.0;
+                score += (1.0 - channel/255.0) * MISSED_COVERAGE_PENALTY;
             }
         }
 
