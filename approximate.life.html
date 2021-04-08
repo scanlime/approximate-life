@@ -614,21 +614,6 @@ function WorkerPool(reference, onmessage) {
 function Bitstream() {
     this.bits = new Uint8Array(NUM_BITS);
 
-    this.clone = function() {
-        var result = new Bitstream();
-        result.bits.set(this.bits);
-        return result;
-    }
-
-    this.equals = function(other) {
-        for (var i = 0; i < NUM_BITS; i++) {
-            if (this.bits[i] != other.bits[i]) {
-                return false;
-            }
-        }
-        return true;
-    }
-
     this.toHexString = function() {
         var result = [];
         var digit = NUM_BITS >> 2;
@@ -792,7 +777,6 @@ function main() {
 
         if (wantPoints && !e.data.points) {
             // Run this one again, but request the points
-            bitstream.bits.set(e.data.bits);
             pool.submit({
                 bits: e.data.bits,
                 points: true,
