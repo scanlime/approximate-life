@@ -25,7 +25,7 @@ const WORKER_SRC = `
     const REPEATED_MUTATION_PROBABILITY = 0.3;
 
     // Overall weight for missed pixel score penalties
-    const MISSED_COVERAGE_PENALTY = 40.0;
+    const MISSED_COVERAGE_PENALTY = 80.0;
 
     // Size of triangle memo buffer, and maximum size of shapes we can build.
     // Must be a power of two. Determines memory usage per worker.
@@ -861,7 +861,7 @@ function Renderer(canvas, resolution) {
 
 function main() {
     const GHOST_MAX_FPS = 5.0;
-    const SCORE_RATIO_THRESHOLD = 1.012;
+    const SCORE_RATIO_THRESHOLD = 1.02;
     const WARMUP_COUNT = 20000;
     const COUNTER_FREEZE_DURATION = 10000;
     const DEBUG_RESOLUTION = [800, 120];
