@@ -40,7 +40,7 @@ const WORKER_SRC = `
 
     // Amount of simulation detail; each edge is simulated with many intermediate
     // points, to give the cells flexible walls that conform to their surroundings.
-    const POINTS_PER_EDGE = 7;
+    const POINTS_PER_EDGE = 9;
     const MAX_EDGES = MAX_TRIANGLES * 3;
     const POINTS_PER_TRIANGLE = (POINTS_PER_EDGE - 1) * 3;
     const MAX_POINTS = MAX_EDGES * POINTS_PER_EDGE;
@@ -718,7 +718,7 @@ function Renderer(canvas, resolution) {
     const SCALE = 55;
     const CENTER_X = 0.5;
     const CENTER_Y = 0.47;
-    const TRIANGLE_FILL_STYLE = 'rgba(255,40,200,0.3)';
+    const TRIANGLE_FILL_STYLE = 'rgba(255,40,255,0.4)';
     const EDGE_STROKE_STYLE = '#e5cbe3';
     const EDGE_STROKE_WIDTH = 0.055;
     const GHOST_STROKE_STYLE = '#fff';
@@ -860,7 +860,7 @@ function Renderer(canvas, resolution) {
 }
 
 function main() {
-    const GHOST_MAX_FPS = 15.0;
+    const GHOST_MAX_FPS = 5.0;
     const SCORE_RATIO_THRESHOLD = 1.008;
     const WARMUP_COUNT = 20000;
     const COUNTER_FREEZE_DURATION = 10000;
@@ -972,6 +972,9 @@ function main() {
     }
     #info0Layer {
         background: #192822;
+    }
+    #midLayer {
+        opacity: 0.8;
     }
     #ghostLayer {
         mix-blend-mode: lighten;
