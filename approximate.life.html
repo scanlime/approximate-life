@@ -4,7 +4,7 @@
 // Run in Chrome, capture with OBS at 2560x1440
 
 const RESOLUTION = [2560, 1440];
-const NUM_BITS = 512;
+const NUM_BITS = 768;
 
 function main() {
     const GHOST_MAX_FPS = 5.0;
@@ -770,7 +770,7 @@ function Bitstream() {
     }
 
     this.drawPattern = function(context, left, top, width, height) {
-        const THICKNESS = 0.4;
+        const THICKNESS = 0.5;
         context.fillStyle = '#fff';
         var bitWidth = width / NUM_BITS;
         var bitThickness = bitWidth * THICKNESS;
