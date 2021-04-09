@@ -540,56 +540,49 @@ const WORKER_SRC = `
         var mutations = [];
         var retry = null;
         do {
-            // First random number: determines copy length, copy invert bit, and retry roll
-            var r = Math.random() * NUM_BITS;
+            // Extract all random values for each cycle from a single float
+            var r = Math.random();
             mutations.push(r);
-            var copyLen = r|0;
+
+            // Top of random word: copy length, invert flag
+            r *= NUM_BITS - 2;
+            var copyLen = 1 + (r|0);
             r *= 2;
-            var invert = (r|0) % 2;
+            var invert = r & 1;
+
+            // Middle of random word: locations in bitstream
+            var maxOffset = NUM_BITS - copyLen;
+            r *= maxOffset;
+            var dest = (r|0) % maxOffset;
+            r *= maxOffset;
+            var src = (r|0) % maxOffset;
+
+            // Low bits: retry roll
             retry = r - (r|0);
 
-            if (copyLen <= 1) {
-                // Single bit flip
+            // Copy forwards or backwards, like memmove
+            var step = 1;
+            if (dest > src) {
+                src += copyLen - 1;
+                dest += copyLen - 1;
+                step = -1;
+            }
 
-                // Second random number: specific position
-                var r = Math.random() * NUM_BITS;
-                mutations.push(r);
-                var dest = r|0;
-                bits[dest] ^= 1;
-
-            } else {
-                var difference = false;
-
-                // Second random number: specific position
-                var maxOffset = NUM_BITS - copyLen;
-                var r = Math.random() * maxOffset;
-                mutations.push(r);
-                var dest = r|0;
-                r *= maxOffset;
-                var src = (r|0) % maxOffset;
-
-                var step = 1;
-                if (dest > src) {
-                    // reverse memmove
-                    src += copyLen - 1;
-                    dest += copyLen - 1;
-                    step = -1;
+            var difference = false;
+            while (copyLen > 0) {
+                var srcBit = bits[src] ^ invert;
+                if (difference || bits[dest] != srcBit) {
+                    difference = true;
+                    bits[dest] = srcBit;
                 }
+                src += step;
+                dest += step;
+                copyLen--;
+            }
 
-                while (copyLen > 0) {
-                    var srcBit = bits[src] ^ invert;
-                    if (difference || bits[dest] != srcBit) {
-                        difference = true;
-                        bits[dest] = srcBit;
-                    }
-                    src += step;
-                    dest += step;
-                    copyLen--;
-                }
-
-                if (!difference) {
-                    retry = 0;
-                }
+            if (!difference) {
+                // Nothing actually changed
+                retry = 0;
             }
 
         } while (retry <= REPEATED_MUTATION_PROBABILITY);
