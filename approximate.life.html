@@ -3,9 +3,8 @@
 // (C) Micah Elizabeth Scott 2014 - 2021
 // Run in Chrome, capture with OBS at 2560x1440
 
-const NUM_BITS = 768;
-
 function main() {
+    const NUM_BITS = 768;
     const GHOST_MAX_FPS = 5.0;
     const SCORE_RATIO_THRESHOLD = 1.02;
     const WARMUP_COUNT = 20000;
@@ -22,14 +21,14 @@ function main() {
     var debugLayer = new Renderer(document.getElementById('debugLayer'), DEBUG_RESOLUTION);
 
     var reference = new ReferenceImage('acab');
-    var bitstream = new Bitstream();
+    var bitstream = new Bitstream(NUM_BITS);
 
     var bestResponse = null;
     var ghostResponse = null;
     var responseCount = 0;
     var infoLayerToggle = 0;
 
-    var pool = new WorkerPool(function (e) {
+    var pool = new WorkerPool(NUM_BITS, function (e) {
         responseCount++;
 
         var goodScore = bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD);
@@ -98,13 +97,13 @@ function main() {
     }, 1000 / GHOST_MAX_FPS);
 }
 
-function WorkerPool(onmessage) {
+function WorkerPool(numBits, onmessage) {
     const WORKER_COUNT = 20;
     const JOB_COUNT = 40;
     const WORKER_SRC = document.getElementById('worker').text;
 
     const workerBlob = new Blob([
-        WORKER_SRC.replace('${NUM_BITS}', `${NUM_BITS}`)
+        WORKER_SRC.replace('${NUM_BITS}', `${numBits}`)
     ], {type: 'application/javascript'});
     const workerURL = URL.createObjectURL(workerBlob);
     const workers = [];
@@ -127,17 +126,17 @@ function WorkerPool(onmessage) {
     }
 }
 
-function Bitstream() {
-    this.bits = new Uint8Array(NUM_BITS);
+function Bitstream(numBits) {
+    this.bits = new Uint8Array(numBits);
 
     this.toHexString = function() {
         var result = [];
-        var digit = NUM_BITS >> 2;
+        var digit = this.bits.length >> 2;
         do {
             digit -= 1;
             var h = 0;
             for (var i = 0; i < 4; i++) {
-                h += (this.bits[NUM_BITS-1-(digit*4+i)]&1)<<i;
+                h += (this.bits[this.bits.length-1-(digit*4+i)]&1)<<i;
             }
             result.push(h.toString(16));
         } while (digit > 0);
@@ -147,9 +146,9 @@ function Bitstream() {
     this.drawPattern = function(context, left, top, width, height) {
         const THICKNESS = 0.5;
         context.fillStyle = '#fff';
-        var bitWidth = width / NUM_BITS;
+        var bitWidth = width / this.bits.length;
         var bitThickness = bitWidth * THICKNESS;
-        for (var i = 0; i < NUM_BITS; i++) {
+        for (var i = 0; i < this.bits.length; i++) {
             var bitHeight = (1 & this.bits[i]) ? height : bitThickness;
             context.fillRect(bitWidth*(i+0.5-THICKNESS*0.5), top+height-bitHeight, bitThickness, bitHeight);
         }
@@ -307,10 +306,10 @@ function Renderer(canvas, resolution) {
     this.infoFrame = function(e) {
         var xMargin = 10;
         var yMargin = 4;
-        var bitFontHeight = (canvas.width - xMargin * 2) / NUM_BITS * monospaceAspectRatio * 4;
+        var bitFontHeight = (canvas.width - xMargin * 2) / e.bitstream.bits.length * monospaceAspectRatio * 4;
         var footerFontHeight = 30;
         var patternH = 50;
-        var patternY = canvas.height - footerFontHeight - bitFontHeight - patternH - yMargin * 4;
+        var patternY = canvas.height - footerFontHeight - bitFontHeight - patternH - yMargin * 5;
         var scrollHeight = patternY - yMargin;
         var scrollRate = 1.0;
 
@@ -328,13 +327,13 @@ function Renderer(canvas, resolution) {
         context.textAlign = 'center';
         context.textBaseline = 'top';
         context.font = `${bitFontHeight}px ${MONOSPACE_FONT}`;
-        context.fillText(e.bitstream.toHexString(), canvas.width/2, patternY + patternH + yMargin);
+        context.fillText(e.bitstream.toHexString(), canvas.width/2, patternY + patternH + yMargin*2);
 
         context.fillStyle = 'rgba(255,255,255,0.3)';
         context.font = `${footerFontHeight}px "DIN Condensed"`;
         context.textAlign = 'left';
         context.textBaseline = 'bottom';
-        context.fillText(`MES 2014-2021  //  TRI-${NUM_BITS}`, xMargin, canvas.height - yMargin);
+        context.fillText(`MES 2014-2021  //  TRI-${e.bitstream.bits.length}`, xMargin, canvas.height - yMargin);
         context.textAlign = 'right';
         context.fillText(`#${e.visibleCounter}`, canvas.width - xMargin, canvas.height - yMargin);
     }
