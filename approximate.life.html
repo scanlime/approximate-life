@@ -540,22 +540,27 @@ const WORKER_SRC = `
         var mutations = [];
         var retry = null;
         do {
+            // First random number: determines copy length, copy invert bit, and retry roll
             var r = Math.random() * NUM_BITS;
             mutations.push(r);
             var copyLen = r|0;
+            r *= 2;
+            var invert = (r|0) % 2;
             retry = r - (r|0);
 
             if (copyLen <= 1) {
                 // Single bit flip
 
+                // Second random number: specific position
                 var r = Math.random() * NUM_BITS;
                 mutations.push(r);
                 var dest = r|0;
                 bits[dest] ^= 1;
 
             } else {
-                var difference = false;
+                var difference = invert != 0;
 
+                // Second random number: specific position
                 var maxOffset = NUM_BITS - copyLen;
                 var r = Math.random() * maxOffset;
                 mutations.push(r);
@@ -574,7 +579,7 @@ const WORKER_SRC = `
                 while (copyLen > 0) {
                     if (difference || bits[dest] != bits[src]) {
                         difference = true;
-                        bits[dest] = bits[src];
+                        bits[dest] = bits[src] ^ invert;
                     }
                     src += step;
                     dest += step;
