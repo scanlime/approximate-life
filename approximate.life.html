@@ -6,8 +6,97 @@
 const RESOLUTION = [2560, 1440];
 const NUM_BITS = 512;
 
-const WORKER_COUNT = 20;
-const JOB_COUNT = 40;
+function main() {
+    const GHOST_MAX_FPS = 5.0;
+    const SCORE_RATIO_THRESHOLD = 1.02;
+    const WARMUP_COUNT = 20000;
+    const COUNTER_FREEZE_DURATION = 10000;
+    const DEBUG_RESOLUTION = [256, 64];
+
+    var infoLayers = [
+        new Renderer(document.getElementById('info0Layer'), RESOLUTION),
+        new Renderer(document.getElementById('info1Layer'), RESOLUTION),
+    ];
+    var midLayer = new Renderer(document.getElementById('midLayer'), RESOLUTION);
+    var ghostLayer = new Renderer(document.getElementById('ghostLayer'), RESOLUTION);
+    var debugLayer = new Renderer(document.getElementById('debugLayer'), DEBUG_RESOLUTION);
+
+    var reference = new ReferenceImage();
+    var bitstream = new Bitstream();
+
+    var bestResponse = null;
+    var ghostResponse = null;
+    var responseCount = 0;
+    var infoLayerToggle = 0;
+
+    var pool = new WorkerPool(reference, function (e) {
+        responseCount++;
+
+        var goodScore = bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD);
+        var wantPoints = ghostResponse == null || goodScore;
+
+        if (wantPoints && !e.data.points) {
+            // Run this one again, but request the points
+            pool.submit({
+                bits: e.data.bits,
+                points: true,
+                mutate: false,
+            });
+        } else {
+
+            if (ghostResponse == null && e.data.points) {
+                ghostResponse = e.data;
+            }
+
+            if (goodScore && e.data.points) {
+                var visibleCounter = responseCount - WARMUP_COUNT;
+                if (visibleCounter > -COUNTER_FREEZE_DURATION && visibleCounter < 0) {
+                    visibleCounter = 0;
+                }
+                bestResponse = e.data;
+                bitstream.bits.set(e.data.bits);
+
+                debugLayer.clear();
+                debugLayer.debugFrame({
+                    reference,
+                    responseCount,
+                    bestResponse,
+                });
+
+                midLayer.clear();
+                midLayer.solidFrame(bestResponse);
+
+                infoLayers[infoLayerToggle].infoFrame({
+                    previousFrame: infoLayers[infoLayerToggle^1].canvas,
+                    visibleCounter,
+                    bitstream
+                });
+                infoLayerToggle ^= 1;
+                infoLayers[infoLayerToggle].clear();
+            }
+
+            pool.submit({
+                bits: bestResponse.bits,
+                points: false,
+                mutate: responseCount > WARMUP_COUNT,
+            });
+        }
+    });
+
+    pool.submitAll({
+        bits: bitstream.bits,
+        points: true,
+        mutate: false,
+    });
+
+    window.setInterval(function () {
+        if (ghostResponse) {
+            ghostLayer.ghostFrame(ghostResponse);
+            ghostResponse = null;
+        }
+    }, 1000 / GHOST_MAX_FPS);
+}
+
 const WORKER_SRC = `
     "use strict";
 
@@ -636,33 +725,10 @@ const WORKER_SRC = `
     }
 `;
 
-function ReferenceImage() {
-    const text = 'acab';
-
-    var canvas = document.createElement('canvas');
-    canvas.width = 50;
-    canvas.height = 32;
-
-    var context = canvas.getContext('2d');
-    context.fillStyle = 'white';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    var fontSize = canvas.height*1.03;
-    context.textAlign = 'center';
-    context.font = `${fontSize}px "DIN Condensed"`;
-    context.fillStyle = 'black';
-
-    // Our simulated shape is always centered by its bounding box, so the
-    // reference image must also be centered in order to match it precisely.
-    var measure = context.measureText(text)
-    const x = canvas.width * 0.5 - (measure.actualBoundingBoxRight - measure.actualBoundingBoxLeft) * 0.5;
-    const y = canvas.height * 0.5 - (measure.actualBoundingBoxDescent - measure.actualBoundingBoxAscent) * 0.5;
-    context.fillText(text, x, y);
-
-    this.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-}
-
 function WorkerPool(reference, onmessage) {
+    const WORKER_COUNT = 20;
+    const JOB_COUNT = 40;
+
     const self = this;
     const workerBlob = new Blob([WORKER_SRC], {type: 'application/javascript'});
     const workerURL = URL.createObjectURL(workerBlob);
@@ -678,6 +744,12 @@ function WorkerPool(reference, onmessage) {
     this.submit = function(message) {
         workers[nextWorker].postMessage(message);
         nextWorker = (nextWorker + 1) % WORKER_COUNT;
+    }
+
+    this.submitAll = function(message) {
+        for (var i = 0; i < JOB_COUNT; i++) {
+            this.submit(message);
+        }
     }
 }
 
@@ -708,6 +780,32 @@ function Bitstream() {
             context.fillRect(bitWidth*(i+0.5-THICKNESS*0.5), top+height-bitHeight, bitThickness, bitHeight);
         }
     }
+}
+
+function ReferenceImage() {
+    const TEXT = 'acab';
+    const FONT = '"DIN Condensed"';
+    const REF_SIZE = [50, 32];
+    const FONT_SIZE = REF_SIZE[1] * 1.03;
+
+    var canvas = document.createElement('canvas');
+    canvas.width = REF_SIZE[0];
+    canvas.height = REF_SIZE[1];
+    var context = canvas.getContext('2d');
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, REF_SIZE[0], REF_SIZE[1]);
+    context.textAlign = 'center';
+    context.fillStyle = 'black';
+    context.font = `${FONT_SIZE}px ${FONT}`;
+
+    // Our simulated shape is always centered by its bounding box, so the
+    // reference image must also be centered in order to match it precisely.
+    var measure = context.measureText(TEXT)
+    const x = REF_SIZE[0]/2 - (measure.actualBoundingBoxRight - measure.actualBoundingBoxLeft)/2;
+    const y = REF_SIZE[1]/2 - (measure.actualBoundingBoxDescent - measure.actualBoundingBoxAscent)/2;
+    context.fillText(TEXT, x, y);
+
+    this.imageData = context.getImageData(0, 0, REF_SIZE[0], REF_SIZE[1]);
 }
 
 function Renderer(canvas, resolution) {
@@ -867,99 +965,6 @@ function Renderer(canvas, resolution) {
         context.textAlign = 'right';
         context.fillText(`#${e.visibleCounter}`, canvas.width - xMargin, canvas.height - yMargin);
     }
-}
-
-function main() {
-    const GHOST_MAX_FPS = 5.0;
-    const SCORE_RATIO_THRESHOLD = 1.02;
-    const WARMUP_COUNT = 20000;
-    const COUNTER_FREEZE_DURATION = 10000;
-    const DEBUG_RESOLUTION = [256, 64];
-
-    var infoLayers = [
-        new Renderer(document.getElementById('info0Layer'), RESOLUTION),
-        new Renderer(document.getElementById('info1Layer'), RESOLUTION),
-    ];
-    var midLayer = new Renderer(document.getElementById('midLayer'), RESOLUTION);
-    var ghostLayer = new Renderer(document.getElementById('ghostLayer'), RESOLUTION);
-    var debugLayer = new Renderer(document.getElementById('debugLayer'), DEBUG_RESOLUTION);
-
-    var reference = new ReferenceImage();
-    var bitstream = new Bitstream();
-
-    var bestResponse = null;
-    var ghostResponse = null;
-    var responseCount = 0;
-    var infoLayerToggle = 0;
-
-    var pool = new WorkerPool(reference, function (e) {
-        responseCount++;
-
-        var goodScore = bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD);
-        var wantPoints = ghostResponse == null || goodScore;
-
-        if (wantPoints && !e.data.points) {
-            // Run this one again, but request the points
-            pool.submit({
-                bits: e.data.bits,
-                points: true,
-                mutate: false,
-            });
-        } else {
-
-            if (ghostResponse == null && e.data.points) {
-                ghostResponse = e.data;
-            }
-
-            if (goodScore && e.data.points) {
-                var visibleCounter = responseCount - WARMUP_COUNT;
-                if (visibleCounter > -COUNTER_FREEZE_DURATION && visibleCounter < 0) {
-                    visibleCounter = 0;
-                }
-                bestResponse = e.data;
-                bitstream.bits.set(e.data.bits);
-
-                debugLayer.clear();
-                debugLayer.debugFrame({
-                    reference,
-                    responseCount,
-                    bestResponse,
-                });
-
-                midLayer.clear();
-                midLayer.solidFrame(bestResponse);
-
-                infoLayers[infoLayerToggle].infoFrame({
-                    previousFrame: infoLayers[infoLayerToggle^1].canvas,
-                    visibleCounter,
-                    bitstream
-                });
-                infoLayerToggle ^= 1;
-                infoLayers[infoLayerToggle].clear();
-            }
-
-            pool.submit({
-                bits: bestResponse.bits,
-                points: false,
-                mutate: responseCount > WARMUP_COUNT,
-            });
-        }
-    });
-
-    for (var i = 0; i < JOB_COUNT; i++) {
-        pool.submit({
-            bits: bitstream.bits,
-            points: true,
-            mutate: false,
-        });
-    }
-
-    window.setInterval(function () {
-        if (ghostResponse) {
-            ghostLayer.ghostFrame(ghostResponse);
-            ghostResponse = null;
-        }
-    }, 1000 / GHOST_MAX_FPS);
 }
 
 </script>
