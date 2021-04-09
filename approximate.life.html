@@ -29,7 +29,7 @@ function main() {
     var responseCount = 0;
     var infoLayerToggle = 0;
 
-    var pool = new WorkerPool(reference, function (e) {
+    var pool = new WorkerPool(function (e) {
         responseCount++;
 
         var goodScore = bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD);
@@ -84,6 +84,7 @@ function main() {
     });
 
     pool.submitAll({
+        reference,
         bits: bitstream.bits,
         points: true,
         mutate: false,
@@ -725,11 +726,10 @@ const WORKER_SRC = `
     }
 `;
 
-function WorkerPool(reference, onmessage) {
+function WorkerPool(onmessage) {
     const WORKER_COUNT = 20;
     const JOB_COUNT = 40;
 
-    const self = this;
     const workerBlob = new Blob([WORKER_SRC], {type: 'application/javascript'});
     const workerURL = URL.createObjectURL(workerBlob);
     const workers = [];
@@ -738,7 +738,6 @@ function WorkerPool(reference, onmessage) {
     for (var i = 0; i < WORKER_COUNT; i++) {
         workers[i] = new Worker(workerURL);
         workers[i].onmessage = onmessage;
-        workers[i].postMessage({reference});
     }
 
     this.submit = function(message) {
