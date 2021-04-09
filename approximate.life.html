@@ -4,7 +4,7 @@
 // Run in Chrome, capture with OBS at 2560x1440
 
 const RESOLUTION = [2560, 1440];
-const NUM_BITS = 768;
+const NUM_BITS = 512;
 
 const WORKER_COUNT = 20;
 const JOB_COUNT = 40;
@@ -652,8 +652,10 @@ function ReferenceImage() {
     context.fillStyle = 'black';
 
     const x = canvas.width * 0.5;
-    const y = canvas.height * 0.57;
+    const y = canvas.height * 0.5;
     context.fillText('acab', x, y);
+
+// fixme: calc real center
 
     this.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 }
@@ -724,6 +726,11 @@ function Renderer(canvas, resolution) {
     const BORDER_STROKE_STYLE = '#131916';
     const BORDER_STROKE_WIDTH = 4.0;
     const ROLLING_CHART_OPACITY = 0.35;
+    const MONOSPACE_FONT = '"Consolas"';
+
+    var monospaceRefHeight = 100;
+    context.font = `${monospaceRefHeight}px ${MONOSPACE_FONT}`;
+    var monospaceAspectRatio = monospaceRefHeight / context.measureText("0").width;
 
     this.drawEdgePaths = function(state) {
         var index = 0;
@@ -825,10 +832,14 @@ function Renderer(canvas, resolution) {
     }
 
     this.infoFrame = function(e) {
-        var scrollHeight = canvas.height - 155;
-        var scrollRate = 1.0;
-        var patternY = canvas.height - 148;
+        var xMargin = 10;
+        var yMargin = 4;
+        var bitFontHeight = (canvas.width - xMargin * 2) / NUM_BITS * monospaceAspectRatio * 4;
+        var footerFontHeight = 30;
         var patternH = 50;
+        var patternY = canvas.height - footerFontHeight - bitFontHeight - patternH - yMargin * 4;
+        var scrollHeight = patternY - yMargin;
+        var scrollRate = 1.0;
 
         // Copy a new row from the pattern drawing into the rolling chart
         context.globalAlpha = ROLLING_CHART_OPACITY;
@@ -843,16 +854,16 @@ function Renderer(canvas, resolution) {
         context.fillStyle = 'rgba(255,255,255,0.5)';
         context.textAlign = 'center';
         context.textBaseline = 'top';
-        context.font = `${canvas.width / NUM_BITS * 7.22}px "Consolas"`;
-        context.fillText(e.bitstream.toHexString(), canvas.width/2, patternY + patternH + 8);
+        context.font = `${bitFontHeight}px ${MONOSPACE_FONT}`;
+        context.fillText(e.bitstream.toHexString(), canvas.width/2, patternY + patternH + yMargin);
 
         context.fillStyle = 'rgba(255,255,255,0.3)';
-        context.font = '30px "DIN Condensed"';
+        context.font = `${footerFontHeight}px "DIN Condensed"`;
         context.textAlign = 'left';
         context.textBaseline = 'bottom';
-        context.fillText(`MES 2014-2021  //  TRI-${NUM_BITS}`, 10, canvas.height - 4);
+        context.fillText(`MES 2014-2021  //  TRI-${NUM_BITS}`, xMargin, canvas.height - yMargin);
         context.textAlign = 'right';
-        context.fillText(`#${e.visibleCounter}`, canvas.width - 10, canvas.height - 4);
+        context.fillText(`#${e.visibleCounter}`, canvas.width - xMargin, canvas.height - yMargin);
     }
 }
 
