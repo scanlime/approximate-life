@@ -763,7 +763,7 @@ function Renderer(canvas, resolution) {
         context.putImageData(imageData, 0, 0);
 
         var debugText = [
-            `Response counter: ${e.visibleCounter}`,
+            `Response count: ${e.responseCount}`,
             `Score: ${bestResponse.score}`,
             `Triangles: ${bestResponse.numTriangles}`,
             `Edges: ${bestResponse.numEdges}`,
@@ -772,7 +772,7 @@ function Renderer(canvas, resolution) {
             `${e.goodMutation}`,
         ];
 
-        var debugSize = 14;
+        var debugSize = 10;
         var lineSpacing = 1.2;
         context.fillStyle = '#fff';
         context.textAlign = 'left';
@@ -792,8 +792,8 @@ function Renderer(canvas, resolution) {
             var px = (pixel % imageData.width)|0;
             var py = (pixel / imageData.width)|0;
 
-            context.fillStyle = `rgba(${channel},${255-channel},0,0.3)`;
-            context.fillRect(px, py, 2, 2);
+            context.fillStyle = `rgba(${channel},${255-channel},0,0.8)`;
+            context.fillRect(px, py, 1, 1);
         }
     }
 
@@ -863,7 +863,7 @@ function main() {
     const SCORE_RATIO_THRESHOLD = 1.02;
     const WARMUP_COUNT = 20000;
     const COUNTER_FREEZE_DURATION = 10000;
-    const DEBUG_RESOLUTION = [800, 120];
+    const DEBUG_RESOLUTION = [512, 128];
 
     var infoLayers = [
         new Renderer(document.getElementById('info0Layer'), RESOLUTION),
@@ -917,7 +917,7 @@ function main() {
                 debugLayer.clear();
                 debugLayer.debugFrame({
                     reference,
-                    visibleCounter,
+                    responseCount,
                     bestResponse,
                     goodMutation,
                 });
@@ -983,6 +983,9 @@ function main() {
         background: black;
         top: 1460px;
         left: 20px;
+        width: 2048px;
+        height: 512px;
+        image-rendering: pixelated;
     }
 </style>
 </head>
