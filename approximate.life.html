@@ -4,7 +4,8 @@
 // Run in Chrome, capture with OBS at 2560x1440
 
 const RESOLUTION = [2560, 1440];
-const NUM_BITS = 512;
+const NUM_BITS = 768;
+
 const WORKER_COUNT = 20;
 const JOB_COUNT = 40;
 const WORKER_SRC = `
@@ -24,8 +25,8 @@ const WORKER_SRC = `
     // Probability for repeated mutations in a single cycle. >=1.0 will hang.
     const REPEATED_MUTATION_PROBABILITY = 0.3;
 
-    // Overall weight for missed pixel score penalties
-    const MISSED_COVERAGE_PENALTY = 200.0;
+    // Overall weight for missed pixel score penalties (relative to misplaced triangle penalty)
+    const MISSED_COVERAGE_PENALTY = 1e3;
 
     // Size of triangle memo buffer, and maximum size of shapes we can build.
     // Must be a power of two. Determines memory usage per worker.
@@ -35,7 +36,7 @@ const WORKER_SRC = `
     const WORLD_AREA = WORLD_SIZE * WORLD_SIZE;
 
     // Maximum triangle counts, based on maximum bitstream sizes
-    const NUM_BITS = 512;
+    const NUM_BITS = ${NUM_BITS};
     const MAX_TRIANGLES = NUM_BITS;
 
     // Amount of simulation detail; each edge is simulated with many intermediate
@@ -722,7 +723,7 @@ function Renderer(canvas, resolution) {
     const GHOST_FADE_RATE = 0.2;
     const BORDER_STROKE_STYLE = '#131916';
     const BORDER_STROKE_WIDTH = 4.0;
-    const ROLLING_CHART_OPACITY = 0.2;
+    const ROLLING_CHART_OPACITY = 0.35;
 
     this.drawEdgePaths = function(state) {
         var index = 0;
@@ -827,6 +828,7 @@ function Renderer(canvas, resolution) {
         var scrollHeight = canvas.height - 155;
         var scrollRate = 1.0;
         var patternY = canvas.height - 148;
+        var patternH = 50;
 
         // Copy a new row from the pattern drawing into the rolling chart
         context.globalAlpha = ROLLING_CHART_OPACITY;
@@ -836,20 +838,21 @@ function Renderer(canvas, resolution) {
         // Scroll the bulk of the rolling chart
         context.drawImage(e.previousFrame, 0, scrollRate, canvas.width, scrollHeight, 0, 0, canvas.width, scrollHeight);
 
-        e.bitstream.drawPattern(context, 0, patternY, canvas.width, 50);
+        e.bitstream.drawPattern(context, 0, patternY, canvas.width, patternH);
 
         context.fillStyle = 'rgba(255,255,255,0.5)';
         context.textAlign = 'center';
-        context.textBaseline = 'middle';
-        context.font = '36.1px "Consolas"';
-        context.fillText(e.bitstream.toHexString(), canvas.width/2, canvas.height - 62);
+        context.textBaseline = 'top';
+        context.font = `${canvas.width / NUM_BITS * 7.22}px "Consolas"`;
+        context.fillText(e.bitstream.toHexString(), canvas.width/2, patternY + patternH + 8);
 
         context.fillStyle = 'rgba(255,255,255,0.3)';
         context.font = '30px "DIN Condensed"';
         context.textAlign = 'left';
-        context.fillText(`MES 2014-2021  //  TRI-${NUM_BITS}`, 10, canvas.height - 16);
+        context.textBaseline = 'bottom';
+        context.fillText(`MES 2014-2021  //  TRI-${NUM_BITS}`, 10, canvas.height - 4);
         context.textAlign = 'right';
-        context.fillText(`#${e.visibleCounter}`, canvas.width - 10, canvas.height - 16);
+        context.fillText(`#${e.visibleCounter}`, canvas.width - 10, canvas.height - 4);
     }
 }
 
