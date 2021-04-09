@@ -537,12 +537,10 @@ const WORKER_SRC = `
     // mutations that cancel each other out)
 
     function mutate(bits) {
-        var mutations = [];
         var retry = null;
         do {
             // Extract all random values for each cycle from a single float
             var r = Math.random();
-            mutations.push(r);
 
             // Top of random word: copy length, invert flag
             r *= NUM_BITS - 2;
@@ -586,7 +584,6 @@ const WORKER_SRC = `
             }
 
         } while (retry <= REPEATED_MUTATION_PROBABILITY);
-        return mutations;
     }
 
     // Handle incoming messages from the main thread, mostly
@@ -607,7 +604,7 @@ const WORKER_SRC = `
                 bits: e.data.bits
             };
             if (e.data.mutate) {
-                response.mutations = mutate(e.data.bits);
+                mutate(e.data.bits);
             }
 
             clear();
@@ -768,8 +765,6 @@ function Renderer(canvas, resolution) {
             `Triangles: ${bestResponse.numTriangles}`,
             `Edges: ${bestResponse.numEdges}`,
             `Points: ${bestResponse.numPoints}`,
-            'Last good mutation:',
-            `${e.goodMutation}`,
         ];
 
         var debugSize = 10;
@@ -863,7 +858,7 @@ function main() {
     const SCORE_RATIO_THRESHOLD = 1.02;
     const WARMUP_COUNT = 20000;
     const COUNTER_FREEZE_DURATION = 10000;
-    const DEBUG_RESOLUTION = [512, 128];
+    const DEBUG_RESOLUTION = [256, 64];
 
     var infoLayers = [
         new Renderer(document.getElementById('info0Layer'), RESOLUTION),
@@ -880,18 +875,12 @@ function main() {
     var ghostResponse = null;
     var responseCount = 0;
     var infoLayerToggle = 0;
-    var goodMutation = null;
 
     var pool = new WorkerPool(reference, function (e) {
         responseCount++;
 
         var goodScore = bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD);
         var wantPoints = ghostResponse == null || goodScore;
-
-        // Save info about good mutations, for debugging
-        if (goodScore && e.data.mutations) {
-            goodMutation = e.data.mutations;
-        }
 
         if (wantPoints && !e.data.points) {
             // Run this one again, but request the points
@@ -919,7 +908,6 @@ function main() {
                     reference,
                     responseCount,
                     bestResponse,
-                    goodMutation,
                 });
 
                 midLayer.clear();
@@ -983,8 +971,8 @@ function main() {
         background: black;
         top: 1460px;
         left: 20px;
-        width: 2048px;
-        height: 512px;
+        width: 1024px;
+        height: 256px;
         image-rendering: pixelated;
     }
 </style>
