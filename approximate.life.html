@@ -5,7 +5,7 @@
 
 function main() {
     // Size of genome
-    const NUM_BITS = 512;
+    const NUM_BITS = 1024;
 
     // Simulated annealing
     const DEFAULT_THRESHOLD = 0.2;
@@ -367,7 +367,7 @@ function Renderer(canvas, resolution) {
         context.font = `${bitFontHeight}px ${MONOSPACE_FONT}`;
         context.fillText(e.bitstream.toHexString(), canvas.width/2, patternY + patternH + yMargin*2);
 
-        context.fillStyle = 'rgba(255,255,255,0.3)';
+        context.fillStyle = 'rgba(255,255,255,0.15)';
         context.font = `${footerFontHeight}px "DIN Condensed"`;
         context.textAlign = 'left';
         context.textBaseline = 'bottom';
