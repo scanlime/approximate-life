@@ -537,29 +537,36 @@ const WORKER_SRC = `
     // mutations that cancel each other out)
 
     function mutate(bits) {
-        var r = 0;
         var mutations = [];
+        var retry = null;
         do {
-            r = Math.random();
-            mutations.push(r);
+            var retry = Math.random();
 
-            const MAX_COPY_LEN = NUM_BITS - 2;
-            r *= MAX_COPY_LEN;
-            var copyLen = (r|0) % MAX_COPY_LEN;
-            var maxOffset = NUM_BITS - copyLen;
+            var copyLen = ((Math.random()*NUM_BITS)|0) % NUM_BITS;
+            mutations.push(copyLen);
 
-            if (copyLen == 0) {
+            if (copyLen <= 1) {
                 // Single bit flip
-                r *= NUM_BITS;
-                bits[(r|0) % NUM_BITS] ^= 1;
+
+                var dest = ((Math.random()*NUM_BITS)|0) % NUM_BITS;
+                mutations.push(dest);
+                bits[dest] ^= 1;
 
             } else {
                 var difference = false;
 
-                r *= maxOffset;
-                var dest = (r|0) % maxOffset;
-                r *= maxOffset;
-                var src = (r|0) % maxOffset;
+                var maxOffset = NUM_BITS - copyLen;
+                var dest = ((Math.random()*maxOffset)|0) % maxOffset;
+                mutations.push(dest);
+                var src = ((Math.random()*maxOffset)|0) % maxOffset;
+                mutations.push(src);
+
+                var step = 1;
+                if (dest > src) {
+                    src += copyLen - 1;
+                    dest += copyLen - 1;
+                    step = -1;
+                }
 
                 while (copyLen > 0) {
                     if (difference || bits[dest] != bits[src]) {
@@ -572,11 +579,11 @@ const WORKER_SRC = `
                 }
 
                 if (!difference) {
-                    r = 0;   // retry
+                    retry = 0;
                 }
             }
 
-        } while ((r % 1) <= REPEATED_MUTATION_PROBABILITY);
+        } while (retry <= REPEATED_MUTATION_PROBABILITY);
         return mutations;
     }
 
@@ -851,7 +858,7 @@ function Renderer(canvas, resolution) {
 
 function main() {
     const GHOST_MAX_FPS = 5.0;
-    const SCORE_RATIO_THRESHOLD = 1.02;
+    const SCORE_RATIO_THRESHOLD = 1.01;
     const WARMUP_COUNT = 20000;
     const COUNTER_FREEZE_DURATION = 10000;
     const DEBUG_RESOLUTION = [800, 120];
