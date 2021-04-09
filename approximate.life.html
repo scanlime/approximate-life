@@ -7,10 +7,21 @@ function main() {
     const NUM_BITS = 768;
     const GHOST_MAX_FPS = 5.0;
     const SCORE_RATIO_THRESHOLD = 1.02;
-    const WARMUP_COUNT = 20000;
-    const COUNTER_FREEZE_DURATION = 10000;
+    const WARMUP_COUNT = 10000;
+    const COUNTER_FREEZE_DURATION = 4000;
     const RESOLUTION = [2560, 1440];
     const DEBUG_RESOLUTION = [256, 64];
+
+    function animate(count) {
+        switch (count) {
+            case 0: return new ReferenceImage('.');
+            case 30000: return new ReferenceImage('*');
+            case 100000: return new ReferenceImage('A');
+            case 200000: return new ReferenceImage('AC');
+            case 400000: return new ReferenceImage('ACA');
+            case 800000: return new ReferenceImage('ACAB');
+        }
+    }
 
     var infoLayers = [
         new Renderer(document.getElementById('info0Layer'), RESOLUTION),
@@ -20,7 +31,7 @@ function main() {
     var ghostLayer = new Renderer(document.getElementById('ghostLayer'), RESOLUTION);
     var debugLayer = new Renderer(document.getElementById('debugLayer'), DEBUG_RESOLUTION);
 
-    var reference = new ReferenceImage('acab');
+    var reference = animate(0);
     var bitstream = new Bitstream(NUM_BITS);
 
     var bestResponse = null;
@@ -31,7 +42,17 @@ function main() {
     var pool = new WorkerPool(NUM_BITS, function (e) {
         responseCount++;
 
-        var goodScore = bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD);
+        var newReference = animate(responseCount);
+        if (newReference) {
+            // The reference will be asynchronously updated by all workers,
+            // and any results using the old reference will not be saved.
+            reference = newReference;
+            bestResponse = null;
+            pool.submitAll({reference});
+        }
+
+        var wasReferenceCurrent = e.data.refId == reference.id;
+        var goodScore = wasReferenceCurrent && (bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD));
         var wantPoints = ghostResponse == null || goodScore;
 
         if (wantPoints && !e.data.points) {
@@ -52,6 +73,7 @@ function main() {
                 if (visibleCounter > -COUNTER_FREEZE_DURATION && visibleCounter < 0) {
                     visibleCounter = 0;
                 }
+
                 bestResponse = e.data;
                 bitstream.bits.set(e.data.bits);
 
@@ -75,7 +97,7 @@ function main() {
             }
 
             pool.submit({
-                bits: bestResponse.bits,
+                bits: bitstream.bits,
                 points: false,
                 mutate: responseCount > WARMUP_COUNT,
             });
@@ -98,8 +120,7 @@ function main() {
 }
 
 function WorkerPool(numBits, onmessage) {
-    const WORKER_COUNT = 20;
-    const JOB_COUNT = 40;
+    const WORKER_COUNT = 32;
     const WORKER_SRC = document.getElementById('worker').text;
 
     const workerBlob = new Blob([
@@ -120,8 +141,8 @@ function WorkerPool(numBits, onmessage) {
     }
 
     this.submitAll = function(message) {
-        for (var i = 0; i < JOB_COUNT; i++) {
-            this.submit(message);
+        for (var i = 0; i < WORKER_COUNT; i++) {
+            workers[i].postMessage(message);
         }
     }
 }
@@ -177,6 +198,7 @@ function ReferenceImage(text) {
     const y = REF_SIZE[1]/2 - (measure.actualBoundingBoxDescent - measure.actualBoundingBoxAscent)/2;
     context.fillText(text, x, y);
 
+    this.id = text;
     this.imageData = context.getImageData(0, 0, REF_SIZE[0], REF_SIZE[1]);
 }
 
@@ -186,7 +208,7 @@ function Renderer(canvas, resolution) {
     this.canvas = canvas;
     var context = canvas.getContext('2d');
 
-    const SCALE = 48;
+    const SCALE = 28;
     const CENTER_X = 0.5;
     const CENTER_Y = 0.47;
     const TRIANGLE_FILL_STYLE = 'rgba(255,40,255,0.4)';
@@ -351,13 +373,13 @@ const RESTING_AREA = 3.0;
 const SIMULATION_STEPS = 400;
 
 // How large to project our coordinates on the reference image's pixel grid
-const REFERENCE_SCALE = 1.2;
+const REFERENCE_SCALE = 0.5;
 
 // Probability for repeated mutations in a single cycle. >=1.0 will hang.
 const REPEATED_MUTATION_PROBABILITY = 0.3;
 
 // Overall weight for missed pixel score penalties (relative to misplaced triangle penalty)
-const MISSED_COVERAGE_PENALTY = 1e3;
+const MISSED_COVERAGE_PENALTY = 1e2;
 
 // Size of triangle memo buffer, and maximum size of shapes we can build.
 // Must be a power of two. Determines memory usage per worker.
@@ -945,6 +967,8 @@ self.onmessage = function (e) {
         }
         simulate();
         center();
+
+        response.refId = reference.id;
         response.score = calculateScore();
 
         // Optionally return full vector data
@@ -968,44 +992,40 @@ self.onmessage = function (e) {
 
 </script>
 <style>
-
-body {
-    background: #800;
-    overflow: hidden;
-}
-canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-}
-#info0Layer {
-    background: #192822;
-}
-#midLayer {
-    opacity: 0.8;
-}
-#ghostLayer {
-    mix-blend-mode: lighten;
-    opacity: 0.1;
-}
-#debugLayer {
-    image-rendering: pixelated;
-    background: black;
-    top: 1460px;
-    left: 20px;
-    width: 1024px;
-    height: 256px;
-}
-
+    body {
+        background: #800;
+        overflow: hidden;
+    }
+    canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+    }
+    #info0Layer {
+        background: #192822;
+    }
+    #midLayer {
+        opacity: 0.8;
+    }
+    #ghostLayer {
+        mix-blend-mode: lighten;
+        opacity: 0.1;
+    }
+    #debugLayer {
+        image-rendering: pixelated;
+        background: black;
+        top: 1460px;
+        left: 20px;
+        width: 1024px;
+        height: 256px;
+    }
 </style>
 </head>
 <body onload="main()">
-
-<canvas id="debugLayer"></canvas>
-<canvas id="info0Layer"></canvas>
-<canvas id="info1Layer"></canvas>
-<canvas id="midLayer"></canvas>
-<canvas id="ghostLayer"></canvas>
-
+    <canvas id="debugLayer"></canvas>
+    <canvas id="info0Layer"></canvas>
+    <canvas id="info1Layer"></canvas>
+    <canvas id="midLayer"></canvas>
+    <canvas id="ghostLayer"></canvas>
 </body>
 </html>
