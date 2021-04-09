@@ -6,7 +6,7 @@
 function main() {
     const NUM_BITS = 768;
     const GHOST_MAX_FPS = 5.0;
-    const SCORE_RATIO_THRESHOLD = 1.02;
+    const SCORE_RATIO_THRESHOLD = 1.03;
     const WARMUP_COUNT = 10000;
     const COUNTER_FREEZE_DURATION = 4000;
     const RESOLUTION = [2560, 1440];
@@ -14,12 +14,13 @@ function main() {
 
     function animate(count) {
         switch (count) {
-            case 0: return new ReferenceImage('.');
-            case 30000: return new ReferenceImage('*');
-            case 100000: return new ReferenceImage('A');
-            case 200000: return new ReferenceImage('AC');
-            case 400000: return new ReferenceImage('ACA');
-            case 800000: return new ReferenceImage('ACAB');
+            case 0: return new ReferenceImage('·');
+            case 100000: return new ReferenceImage('*');
+            case 200000: return new ReferenceImage('•');
+            case 300000: return new ReferenceImage('A');
+            case 400000: return new ReferenceImage('AC');
+            case 500000: return new ReferenceImage('ACA');
+            case 600000: return new ReferenceImage('ACAB');
         }
     }
 
@@ -36,7 +37,7 @@ function main() {
 
     var bestResponse = null;
     var ghostResponse = null;
-    var responseCount = 0;
+    var responseCount = -WARMUP_COUNT;
     var infoLayerToggle = 0;
 
     var pool = new WorkerPool(NUM_BITS, function (e) {
@@ -69,11 +70,6 @@ function main() {
             }
 
             if (goodScore && e.data.points) {
-                var visibleCounter = responseCount - WARMUP_COUNT;
-                if (visibleCounter > -COUNTER_FREEZE_DURATION && visibleCounter < 0) {
-                    visibleCounter = 0;
-                }
-
                 bestResponse = e.data;
                 bitstream.bits.set(e.data.bits);
 
@@ -89,7 +85,7 @@ function main() {
 
                 infoLayers[infoLayerToggle].infoFrame({
                     previousFrame: infoLayers[infoLayerToggle^1].canvas,
-                    visibleCounter,
+                    visibleCounter: (responseCount > -COUNTER_FREEZE_DURATION && responseCount < 0) ? 0 : responseCount,
                     bitstream
                 });
                 infoLayerToggle ^= 1;
@@ -99,7 +95,7 @@ function main() {
             pool.submit({
                 bits: bitstream.bits,
                 points: false,
-                mutate: responseCount > WARMUP_COUNT,
+                mutate: responseCount > 0,
             });
         }
     });
@@ -208,7 +204,7 @@ function Renderer(canvas, resolution) {
     this.canvas = canvas;
     var context = canvas.getContext('2d');
 
-    const SCALE = 28;
+    const SCALE = 26;
     const CENTER_X = 0.5;
     const CENTER_Y = 0.47;
     const TRIANGLE_FILL_STYLE = 'rgba(255,40,255,0.4)';
@@ -378,8 +374,14 @@ const REFERENCE_SCALE = 0.5;
 // Probability for repeated mutations in a single cycle. >=1.0 will hang.
 const REPEATED_MUTATION_PROBABILITY = 0.3;
 
-// Overall weight for missed pixel score penalties (relative to misplaced triangle penalty)
-const MISSED_COVERAGE_PENALTY = 1e2;
+// Weight for missed text pixels, relative to misplaced triangle penalty
+const MISSED_COVERAGE_PENALTY = 4.0;
+
+// Weight for squared distance from missed pixels
+const MISSED_COVERAGE_DIST_PENALTY = 1.0;
+
+// Best possible score; nonzero to avoid divide by zero when comparing scores.
+const MINIMUM_SCORE = 1e-4;
 
 // Size of triangle memo buffer, and maximum size of shapes we can build.
 // Must be a power of two. Determines memory usage per worker.
@@ -816,7 +818,7 @@ var reference = null;
 var refCoverage = null;
 
 function calculateScore() {
-    var score = 1.0;
+    var score = MINIMUM_SCORE;
     var imageData = reference.imageData;
 
     // Sample centroids, saving those locations for below
@@ -879,7 +881,7 @@ function calculateScore() {
                     }
                 }
 
-                score += (1.0 - channel/255.0) * (1 + closestCentroidDistSquared) * MISSED_COVERAGE_PENALTY / refCoverage.length;
+                score += (1.0 - channel/255.0) * (MISSED_COVERAGE_PENALTY + closestCentroidDistSquared * MISSED_COVERAGE_DIST_PENALTY);
             }
         }
     }
