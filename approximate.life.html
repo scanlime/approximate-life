@@ -4,23 +4,28 @@
 // Run in Chrome, capture with OBS at 2560x1440
 
 function main() {
+    // Size of genome
     const NUM_BITS = 512;
-    const GHOST_MAX_FPS = 5.0;
-    const SCORE_RATIO_THRESHOLD = 1.03;
+
+    // Simulated annealing
+    const DEFAULT_THRESHOLD = 0.2;
+    const THRESHOLD_DECAY_RATE = 2e-3;
+
     const WARMUP_COUNT = 10000;
     const COUNTER_FREEZE_DURATION = 4000;
+    const GHOST_MAX_FPS = 5.0;
     const RESOLUTION = [2560, 1440];
-    const DEBUG_RESOLUTION = [256, 64];
+    const DEBUG_RESOLUTION = [256, 128];
 
     function animate(count) {
         switch (count) {
             case 0: return new ReferenceImage('·');
             case 100000: return new ReferenceImage('*');
             case 200000: return new ReferenceImage('•');
-            case 300000: return new ReferenceImage('A');
-            case 400000: return new ReferenceImage('AC');
-            case 500000: return new ReferenceImage('ACA');
-            case 600000: return new ReferenceImage('ACAB');
+            case 300000: return new ReferenceImage('a');
+            case 400000: return new ReferenceImage('ac');
+            case 500000: return new ReferenceImage('aca');
+            case 600000: return new ReferenceImage('acab');
         }
     }
 
@@ -35,6 +40,7 @@ function main() {
     var reference = animate(0);
     var bitstream = new Bitstream(NUM_BITS);
 
+    var currentThreshold = DEFAULT_THRESHOLD;
     var bestResponse = null;
     var ghostResponse = null;
     var responseCount = -WARMUP_COUNT;
@@ -49,11 +55,15 @@ function main() {
             // and any results using the old reference will not be saved.
             reference = newReference;
             bestResponse = null;
+            currentThreshold = DEFAULT_THRESHOLD;
             pool.submitAll({reference});
         }
 
+
         var wasReferenceCurrent = e.data.refId == reference.id;
-        var goodScore = wasReferenceCurrent && (bestResponse == null || (e.data.score / bestResponse.score < SCORE_RATIO_THRESHOLD));
+        var goodScore = wasReferenceCurrent && (bestResponse == null || (
+            responseCount > 0 && (((e.data.score / bestResponse.score) - 1.0) < currentThreshold
+        )));
         var wantPoints = ghostResponse == null || goodScore;
 
         if (wantPoints && !e.data.points) {
@@ -65,24 +75,33 @@ function main() {
             });
         } else {
 
+            // Store a new ghost response
             if (ghostResponse == null && e.data.points) {
                 ghostResponse = e.data;
             }
 
+            // Store a new best response, update rendering
             if (goodScore && e.data.points) {
+                currentThreshold -= currentThreshold * THRESHOLD_DECAY_RATE;
                 bestResponse = e.data;
                 bitstream.bits.set(e.data.bits);
 
+                midLayer.clear();
+                midLayer.solidFrame(bestResponse);
+            }
+
+            // Update info layers during warmup or when a new best response arrives
+            if (responseCount <= 0 || (goodScore && e.data.points)) {
+                // Supplimentary debug canvas
                 debugLayer.clear();
                 debugLayer.debugFrame({
                     reference,
                     responseCount,
                     bestResponse,
+                    currentThreshold,
                 });
 
-                midLayer.clear();
-                midLayer.solidFrame(bestResponse);
-
+                // Info layers
                 infoLayers[infoLayerToggle].infoFrame({
                     previousFrame: infoLayers[infoLayerToggle^1].canvas,
                     visibleCounter: (responseCount > -COUNTER_FREEZE_DURATION && responseCount < 0) ? 0 : responseCount,
@@ -95,7 +114,7 @@ function main() {
             pool.submit({
                 bits: bitstream.bits,
                 points: false,
-                mutate: responseCount > 0,
+                mutate: true,
             });
         }
     });
@@ -204,7 +223,7 @@ function Renderer(canvas, resolution) {
     this.canvas = canvas;
     var context = canvas.getContext('2d');
 
-    const SCALE = 26;
+    const SCALE = 34;
     const CENTER_X = 0.5;
     const CENTER_Y = 0.47;
     const TRIANGLE_FILL_STYLE = 'rgba(255,40,255,0.4)';
@@ -259,6 +278,7 @@ function Renderer(canvas, resolution) {
 
         var debugText = [
             `Response count: ${e.responseCount}`,
+            `Score threshold: ${e.currentThreshold}`,
             `Score: ${bestResponse.score}`,
             `Triangles: ${bestResponse.numTriangles}`,
             `Edges: ${bestResponse.numEdges}`,
@@ -369,10 +389,7 @@ const RESTING_AREA = 3.0;
 const SIMULATION_STEPS = 400;
 
 // How large to project our coordinates on the reference image's pixel grid
-const REFERENCE_SCALE = 0.5;
-
-// Probability for repeated mutations in a single cycle. >=1.0 will hang.
-const REPEATED_MUTATION_PROBABILITY = 0.3;
+const REFERENCE_SCALE = 0.8;
 
 // Weight for missed text pixels, relative to misplaced triangle penalty
 const MISSED_COVERAGE_PENALTY = 4.0;
@@ -893,8 +910,8 @@ function calculateScore() {
 // mutations that cancel each other out)
 
 function mutate(bits) {
-    var retry = null;
-    do {
+    var difference = false;
+    while (difference == false) {
         // Extract all random values for each cycle from a single float
         var r = Math.random();
 
@@ -904,15 +921,12 @@ function mutate(bits) {
         r *= 2;
         var invert = r & 1;
 
-        // Middle of random word: locations in bitstream
+        // Rest of random word: locations in bitstream
         var maxOffset = NUM_BITS - copyLen;
         r *= maxOffset;
         var dest = (r|0) % maxOffset;
         r *= maxOffset;
         var src = (r|0) % maxOffset;
-
-        // Low bits: retry roll
-        retry = r - (r|0);
 
         // Copy forwards or backwards, like memmove
         var step = 1;
@@ -922,7 +936,7 @@ function mutate(bits) {
             step = -1;
         }
 
-        var difference = false;
+        difference = false;
         while (copyLen > 0) {
             var srcBit = bits[src] ^ invert;
             if (difference || bits[dest] != srcBit) {
@@ -933,13 +947,7 @@ function mutate(bits) {
             dest += step;
             copyLen--;
         }
-
-        if (!difference) {
-            // Nothing actually changed
-            retry = 0;
-        }
-
-    } while (retry <= REPEATED_MUTATION_PROBABILITY);
+    }
 }
 
 // Handle incoming messages from the main thread, mostly
@@ -1019,7 +1027,7 @@ self.onmessage = function (e) {
         top: 1460px;
         left: 20px;
         width: 1024px;
-        height: 256px;
+        height: 512px;
     }
 </style>
 </head>
