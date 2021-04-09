@@ -637,6 +637,8 @@ const WORKER_SRC = `
 `;
 
 function ReferenceImage() {
+    const text = 'acab';
+
     var canvas = document.createElement('canvas');
     canvas.width = 50;
     canvas.height = 32;
@@ -647,15 +649,15 @@ function ReferenceImage() {
 
     var fontSize = canvas.height*1.03;
     context.textAlign = 'center';
-    context.textBaseline = 'middle';
     context.font = `${fontSize}px "DIN Condensed"`;
     context.fillStyle = 'black';
 
-    const x = canvas.width * 0.5;
-    const y = canvas.height * 0.5;
-    context.fillText('acab', x, y);
-
-// fixme: calc real center
+    // Our simulated shape is always centered by its bounding box, so the
+    // reference image must also be centered in order to match it precisely.
+    var measure = context.measureText(text)
+    const x = canvas.width * 0.5 - (measure.actualBoundingBoxRight - measure.actualBoundingBoxLeft) * 0.5;
+    const y = canvas.height * 0.5 - (measure.actualBoundingBoxDescent - measure.actualBoundingBoxAscent) * 0.5;
+    context.fillText(text, x, y);
 
     this.imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 }
@@ -780,7 +782,7 @@ function Renderer(canvas, resolution) {
         context.fillStyle = '#fff';
         context.textAlign = 'left';
         context.textBaseline = 'top';
-        context.font = `${debugSize}px "Consolas"`;
+        context.font = `${debugSize}px monospace`;
         var y = 2;
         for (var line of debugText) {
             context.fillText(line, imageData.width + 10, y);
