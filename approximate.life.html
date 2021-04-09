@@ -22,10 +22,10 @@ const WORKER_SRC = `
     const REFERENCE_SCALE = 1.2;
 
     // Probability for repeated mutations in a single cycle. >=1.0 will hang.
-    const REPEATED_MUTATION_PROBABILITY = 0.1;
+    const REPEATED_MUTATION_PROBABILITY = 0.3;
 
     // Overall weight for missed pixel score penalties
-    const MISSED_COVERAGE_PENALTY = 80.0;
+    const MISSED_COVERAGE_PENALTY = 200.0;
 
     // Size of triangle memo buffer, and maximum size of shapes we can build.
     // Must be a power of two. Determines memory usage per worker.
@@ -508,17 +508,17 @@ const WORKER_SRC = `
                 // This does not penalize for missing background (255) pixels,
                 // but it adds a penalty for failing to cover active (0) pixels.
                 // Penalties are weighted according to the squared distance
-                // between the missed pixel and the closest triangle.
+                // between the missed pixel's center and the closest triangle center.
 
                 var channel = imageData.data[1 + 4*i];
                 if (channel <= 254) {
-                    var tx = (i % imageData.width)|0;
-                    var ty = (i / imageData.width)|0;
+                    var pixelCenterX = ((i % imageData.width)|0) + 0.5;
+                    var pixelCenterY = ((i / imageData.width)|0) + 0.5;
 
                     var closestCentroidDistSquared = 1e9;
                     for (var j = 0; j < numTriangles; j++) {
-                        var dx = tx - centroidTempX[j];
-                        var dy = ty - centroidTempY[j];
+                        var dx = pixelCenterX - centroidTempX[j];
+                        var dy = pixelCenterY - centroidTempY[j];
                         var distSquared = dx*dx + dy*dy;
                         if (distSquared < closestCentroidDistSquared) {
                             closestCentroidDistSquared = distSquared;
