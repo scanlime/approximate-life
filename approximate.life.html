@@ -558,7 +558,7 @@ const WORKER_SRC = `
                 bits[dest] ^= 1;
 
             } else {
-                var difference = invert != 0;
+                var difference = false;
 
                 // Second random number: specific position
                 var maxOffset = NUM_BITS - copyLen;
@@ -577,9 +577,10 @@ const WORKER_SRC = `
                 }
 
                 while (copyLen > 0) {
-                    if (difference || bits[dest] != bits[src]) {
+                    var srcBit = bits[src] ^ invert;
+                    if (difference || bits[dest] != srcBit) {
                         difference = true;
-                        bits[dest] = bits[src] ^ invert;
+                        bits[dest] = srcBit;
                     }
                     src += step;
                     dest += step;
