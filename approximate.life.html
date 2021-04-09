@@ -13,7 +13,7 @@ function main() {
 
     const WARMUP_COUNT = 10000;
     const COUNTER_FREEZE_DURATION = 4000;
-    const GHOST_MAX_FPS = 5.0;
+    const GHOST_MAX_FPS = 10.0;
     const RESOLUTION = [2560, 1440];
     const DEBUG_RESOLUTION = [256, 128];
 
@@ -231,7 +231,7 @@ function Renderer(canvas, resolution) {
     const EDGE_STROKE_WIDTH = 0.055;
     const GHOST_STROKE_STYLE = '#fff';
     const GHOST_STROKE_WIDTH = 0.15;
-    const GHOST_FADE_RATE = 0.2;
+    const GHOST_FADE_RATE = 0.1;
     const BORDER_STROKE_STYLE = '#131916';
     const BORDER_STROKE_WIDTH = 4.0;
     const ROLLING_CHART_OPACITY = 0.35;
@@ -1019,7 +1019,7 @@ self.onmessage = function (e) {
     }
     #ghostLayer {
         mix-blend-mode: lighten;
-        opacity: 0.1;
+        opacity: 0.2;
     }
     #debugLayer {
         image-rendering: pixelated;
