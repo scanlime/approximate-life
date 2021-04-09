@@ -542,50 +542,31 @@ const WORKER_SRC = `
         do {
             r = Math.random();
             mutations.push(r);
-            switch ((r *= 4)|0) {
 
-                case 0: { // Single bit flip
-                    r *= NUM_BITS;
-                    bits[(r|0) % NUM_BITS] ^= 1;
-                    break;
-                }
+            const MAX_COPY_LEN = NUM_BITS / 2;
+            r *= MAX_COPY_LEN;
+            var copyLen = (r|0) % MAX_COPY_LEN;
+            var maxOffset = NUM_BITS - copyLen;
 
-                case 1: { // Two different bits
-                    r *= NUM_BITS;
-                    var pt1 = (r|0) % NUM_BITS;
-                    r *= NUM_BITS;
-                    var pt2 = 1 + ((r|0) % (NUM_BITS - 1));
-                    bits[pt1] ^= 1;
-                    bits[(pt1 + pt2) % NUM_BITS] ^= 1;
-                    break;
-                }
+            if (copyLen == 0) {
+                // Single bit flip
+                r *= NUM_BITS;
+                bits[(r|0) % NUM_BITS] ^= 1;
 
-                case 2: { // Three different nearby bits
-                    r *= NUM_BITS;
-                    var pt1 = (r|0) % NUM_BITS;
-                    r *= NUM_BITS;
-                    var pt2 = 1 + ((r|0) % (NUM_BITS/3));
-                    bits[pt1] ^= 1;
-                    bits[(pt1 - pt2) % NUM_BITS] ^= 1;
-                    bits[(pt1 + pt2) % NUM_BITS] ^= 1;
-                    break;
-                }
+            } else {
+                r *= maxOffset;
+                var dest = (r|0) % maxOffset;
+                r *= maxOffset;
+                var src = (r|0) % maxOffset;
 
-                case 3: { // Copy within, retry on no-op
-                    r *= NUM_BITS;
-                    var dest = (r|0) % NUM_BITS;
-                    r *= NUM_BITS;
-                    var src = (dest + 1 + ((r|0) % (NUM_BITS-1))) % NUM_BITS;
-                    r *= NUM_BITS-1;
-                    var copyLen = (r|0) % Math.min(NUM_BITS - src, NUM_BITS - dest);
-                    var saved = bits.toString();
-                    bits.copyWithin(dest, src, src + copyLen);
-                    if (bits.toString() == saved) {
-                        r = 0;
-                    }
-                    break;
+                var saved = bits.toString();
+                bits.copyWithin(dest, src, src + copyLen);
+
+                if (bits.toString() == saved) {
+                    r = 0;   // retry
                 }
             }
+
         } while ((r % 1) <= REPEATED_MUTATION_PROBABILITY);
         return mutations;
     }
