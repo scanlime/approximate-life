@@ -926,8 +926,7 @@ function mutate(bits) {
         var dest = (r|0) % maxOffset;
         r *= maxOffset;
         var src = (r|0) % maxOffset;
-
-        var invert = (src == dest) ? true : false;
+        var invert = (src == dest) ? 1 : 0;
 
         // Copy forwards or backwards, like memmove
         var step = 1;
