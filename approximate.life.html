@@ -9,7 +9,7 @@ function main() {
 
     // Simulated annealing
     const DEFAULT_THRESHOLD = 0.2;
-    const THRESHOLD_DECAY_RATE = 2e-3;
+    const THRESHOLD_DECAY_RATE = 4e-3;
 
     const WARMUP_COUNT = 10000;
     const COUNTER_FREEZE_DURATION = 4000;
@@ -19,13 +19,16 @@ function main() {
 
     function animate(count) {
         switch (count) {
-            case 0: return new ReferenceImage('·');
-            case 100000: return new ReferenceImage('*');
-            case 200000: return new ReferenceImage('•');
-            case 300000: return new ReferenceImage('a');
-            case 400000: return new ReferenceImage('ac');
-            case 500000: return new ReferenceImage('aca');
-            case 600000: return new ReferenceImage('acab');
+            case 0:      return new ReferenceImage('.');
+            case 100000: return new ReferenceImage('-');
+            case 200000: return new ReferenceImage('+');
+            case 300000: return new ReferenceImage('•');
+            case 400000: return new ReferenceImage('a');
+            case 500000: return new ReferenceImage('b');
+            case 600000: return new ReferenceImage('c');
+            case 700000: return new ReferenceImage('ac');
+            case 800000: return new ReferenceImage('aca');
+            case 900000: return new ReferenceImage('acab');
         }
     }
 
@@ -915,18 +918,16 @@ function mutate(bits) {
         // Extract all random values for each cycle from a single float
         var r = Math.random();
 
-        // Top of random word: copy length, invert flag
         r *= NUM_BITS - 2;
         var copyLen = 1 + (r|0);
-        r *= 2;
-        var invert = r & 1;
 
-        // Rest of random word: locations in bitstream
         var maxOffset = NUM_BITS - copyLen;
         r *= maxOffset;
         var dest = (r|0) % maxOffset;
         r *= maxOffset;
         var src = (r|0) % maxOffset;
+
+        var invert = (src == dest) ? true : false;
 
         // Copy forwards or backwards, like memmove
         var step = 1;
