@@ -5,11 +5,11 @@
 
 function main() {
     // Size of genome
-    const NUM_BITS = 512;
+    const NUM_BITS = 768;
 
     // Simulated annealing
-    const DEFAULT_THRESHOLD = 0.2;
-    const THRESHOLD_DECAY_RATE = 1e-3;
+    const DEFAULT_THRESHOLD = 0.3;
+    const THRESHOLD_DECAY_RATE = 1e-5;
 
     const WARMUP_COUNT = 10000;
     const COUNTER_FREEZE_DURATION = 4000;
@@ -17,7 +17,7 @@ function main() {
     const RESOLUTION = [2560, 1440];
     const DEBUG_RESOLUTION = [256, 128];
 
-    const ANIM_INTERVAL = 67890;
+    const ANIM_INTERVAL = 123456;
     const ANIM_ITEMS = [
         '.','-','---','+','•','a','b','c','ac','aca','acab'
     ];
@@ -60,7 +60,6 @@ function main() {
             currentThreshold = DEFAULT_THRESHOLD;
             pool.submitAll({reference});
         }
-
 
         var wasReferenceCurrent = e.data.refId == reference.id;
         var goodScore = wasReferenceCurrent && (bestResponse == null || (
