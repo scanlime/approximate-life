@@ -5,7 +5,7 @@
 
 function main() {
     // Size of genome
-    const NUM_BITS = 768;
+    const NUM_BITS = 512;
 
     // Simulated annealing
     const DEFAULT_THRESHOLD = 0.25;
@@ -17,19 +17,10 @@ function main() {
     const RESOLUTION = [2560, 1440];
     const DEBUG_RESOLUTION = [256, 128];
 
-    const ANIM_INTERVAL = 123456;
-    const ANIM_ITEMS = [
-        '.','-','---','+','•','a','b','c','ac','aca','acab'
+    const NEXT_FRAME_THRESHOLD = 8000;
+    const ANIMATION_ITEMS = [
+        '.','-','---','+','•','A','B','C','AC','ACA','ACAB'
     ];
-
-    function animate(count) {
-        if (0 == (count % ANIM_INTERVAL)) {
-            var stage = (count / ANIM_INTERVAL)|0;
-            if (stage < ANIM_ITEMS.length) {
-                return new ReferenceImage(ANIM_ITEMS[stage]);
-            }
-        }
-    }
 
     var infoLayers = [
         new Renderer(document.getElementById('info0Layer'), RESOLUTION),
@@ -39,25 +30,33 @@ function main() {
     var ghostLayer = new Renderer(document.getElementById('ghostLayer'), RESOLUTION);
     var debugLayer = new Renderer(document.getElementById('debugLayer'), DEBUG_RESOLUTION);
 
-    var reference = animate(0);
+    var reference = new ReferenceImage(ANIMATION_ITEMS[0]);
     var bitstream = new Bitstream(NUM_BITS);
 
+    var currentAnimationItem = 0;
     var currentThreshold = DEFAULT_THRESHOLD;
     var bestResponse = null;
     var ghostResponse = null;
     var responseCount = -WARMUP_COUNT;
     var infoLayerToggle = 0;
+    var lastPeakResponseCount = 0;
 
     var pool = new WorkerPool(NUM_BITS, function (e) {
         responseCount++;
 
-        var newReference = animate(responseCount);
-        if (newReference) {
+        // Animate reference image occasionally, when it's been a while between successes
+        if (responseCount > 0
+            && bestResponse
+            && (responseCount - lastPeakResponseCount) > NEXT_FRAME_THRESHOLD
+            && currentAnimationItem < ANIMATION_ITEMS.length) {
+
+            reference = new ReferenceImage(ANIMATION_ITEMS[++currentAnimationItem]);
+            bestResponse = null;
+            lastPeakResponseCount = responseCount;
+            currentThreshold = DEFAULT_THRESHOLD;
+
             // The reference will be asynchronously updated by all workers,
             // and any results using the old reference will not be saved.
-            reference = newReference;
-            bestResponse = null;
-            currentThreshold = DEFAULT_THRESHOLD;
             pool.submitAll({reference});
         }
 
@@ -66,6 +65,14 @@ function main() {
             responseCount > 0 && (((e.data.score / bestResponse.score) - 1.0) < currentThreshold
         )));
         var wantPoints = ghostResponse == null || goodScore;
+
+        // Keep track of peaks specifically, for timing the end of the
+        // simulated annealing for each animation frame. Frames will never converge
+        // if we wait for them to stop switching between different patterns with
+        // identical scoring.
+        if (wasReferenceCurrent && bestResponse && e.data.score < bestResponse.score) {
+            lastPeakResponseCount = responseCount;
+        }
 
         if (wantPoints && !e.data.points) {
             // Run this one again, but request the points
@@ -93,15 +100,6 @@ function main() {
 
             // Update info layers during warmup or when a new best response arrives
             if (responseCount <= 0 || (goodScore && e.data.points)) {
-                // Supplimentary debug canvas
-                debugLayer.clear();
-                debugLayer.debugFrame({
-                    reference,
-                    responseCount,
-                    bestResponse,
-                    currentThreshold,
-                });
-
                 // Info layers
                 infoLayers[infoLayerToggle].infoFrame({
                     previousFrame: infoLayers[infoLayerToggle^1].canvas,
@@ -128,10 +126,23 @@ function main() {
     });
 
     window.setInterval(function () {
+
+        // Rate-limited rendering of ghost images for shapes we tried
         if (ghostResponse) {
             ghostLayer.ghostFrame(ghostResponse);
             ghostResponse = null;
         }
+
+        // Supplimentary debug canvas
+        debugLayer.clear();
+        debugLayer.debugFrame({
+            reference,
+            responseCount,
+            bestResponse,
+            lastPeakResponseCount,
+            currentThreshold,
+        });
+
     }, 1000 / GHOST_MAX_FPS);
 }
 
@@ -195,7 +206,7 @@ function Bitstream(numBits) {
 function ReferenceImage(text) {
     const FONT = '"DIN Condensed"';
     const REF_SIZE = [50, 32];
-    const FONT_SIZE = REF_SIZE[1] * 1.03;
+    const FONT_SIZE = REF_SIZE[1] * 0.98;
 
     var canvas = document.createElement('canvas');
     canvas.width = REF_SIZE[0];
@@ -273,18 +284,35 @@ function Renderer(canvas, resolution) {
 
     this.debugFrame = function(e) {
         var imageData = e.reference.imageData;
-        var bestResponse = e.bestResponse;
-
         context.putImageData(imageData, 0, 0);
 
         var debugText = [
             `Response count: ${e.responseCount}`,
+            `Since last peak: ${e.responseCount - e.lastPeakResponseCount}`,
             `Score threshold: ${e.currentThreshold}`,
-            `Score: ${bestResponse.score}`,
-            `Triangles: ${bestResponse.numTriangles}`,
-            `Edges: ${bestResponse.numEdges}`,
-            `Points: ${bestResponse.numPoints}`,
         ];
+
+        var bestResponse = e.bestResponse;
+        if (bestResponse) {
+            debugText = debugText.concat([
+                `Score: ${bestResponse.score}`,
+                `Triangles: ${bestResponse.numTriangles}`,
+                `Edges: ${bestResponse.numEdges}`,
+                `Points: ${bestResponse.numPoints}`,
+            ]);
+
+            for (var i = 0; i < bestResponse.numTriangles; i++) {
+                var debug = bestResponse.debugSamples[i];
+
+                var channel = debug & 0xFF;
+                var pixel = debug >> 8;
+                var px = (pixel % imageData.width)|0;
+                var py = (pixel / imageData.width)|0;
+
+                context.fillStyle = `rgba(${channel},${255-channel},0,0.8)`;
+                context.fillRect(px, py, 1, 1);
+            }
+        }
 
         var debugSize = 10;
         var lineSpacing = 1.2;
@@ -296,18 +324,6 @@ function Renderer(canvas, resolution) {
         for (var line of debugText) {
             context.fillText(line, imageData.width + 10, y);
             y += debugSize * lineSpacing;
-        }
-
-        for (var i = 0; i < bestResponse.numTriangles; i++) {
-            var debug = bestResponse.debugSamples[i];
-
-            var channel = debug & 0xFF;
-            var pixel = debug >> 8;
-            var px = (pixel % imageData.width)|0;
-            var py = (pixel / imageData.width)|0;
-
-            context.fillStyle = `rgba(${channel},${255-channel},0,0.8)`;
-            context.fillRect(px, py, 1, 1);
         }
     }
 
