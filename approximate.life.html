@@ -5,11 +5,11 @@
 
 function main() {
     // Size of genome
-    const NUM_BITS = 1024;
+    const NUM_BITS = 512;
 
     // Simulated annealing
     const DEFAULT_THRESHOLD = 0.2;
-    const THRESHOLD_DECAY_RATE = 4e-3;
+    const THRESHOLD_DECAY_RATE = 1e-3;
 
     const WARMUP_COUNT = 10000;
     const COUNTER_FREEZE_DURATION = 4000;
@@ -17,18 +17,17 @@ function main() {
     const RESOLUTION = [2560, 1440];
     const DEBUG_RESOLUTION = [256, 128];
 
+    const ANIM_INTERVAL = 67890;
+    const ANIM_ITEMS = [
+        '.','-','---','+','•','a','b','c','ac','aca','acab'
+    ];
+
     function animate(count) {
-        switch (count) {
-            case 0:      return new ReferenceImage('.');
-            case 100000: return new ReferenceImage('-');
-            case 200000: return new ReferenceImage('+');
-            case 300000: return new ReferenceImage('•');
-            case 400000: return new ReferenceImage('a');
-            case 500000: return new ReferenceImage('b');
-            case 600000: return new ReferenceImage('c');
-            case 700000: return new ReferenceImage('ac');
-            case 800000: return new ReferenceImage('aca');
-            case 900000: return new ReferenceImage('acab');
+        if (0 == (count % ANIM_INTERVAL)) {
+            var stage = (count / ANIM_INTERVAL)|0;
+            if (stage < ANIM_ITEMS.length) {
+                return new ReferenceImage(ANIM_ITEMS[stage]);
+            }
         }
     }
 
@@ -926,7 +925,9 @@ function mutate(bits) {
         var dest = (r|0) % maxOffset;
         r *= maxOffset;
         var src = (r|0) % maxOffset;
-        var invert = (src == dest) ? 1 : 0;
+
+        const maxInvertLen = NUM_BITS / 3;
+        var invert = (src == dest && copyLen <= maxInvertLen) ? 1 : 0;
 
         // Copy forwards or backwards, like memmove
         var step = 1;
