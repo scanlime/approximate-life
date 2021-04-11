@@ -48,7 +48,7 @@ function main() {
         if (responseCount > 0
             && bestResponse
             && (responseCount - lastPeakResponseCount) > NEXT_FRAME_THRESHOLD
-            && currentAnimationItem < ANIMATION_ITEMS.length) {
+            && currentAnimationItem < (ANIMATION_ITEMS.length-1)) {
 
             reference = new ReferenceImage(ANIMATION_ITEMS[++currentAnimationItem]);
             bestResponse = null;
