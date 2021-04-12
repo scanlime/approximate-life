@@ -951,7 +951,6 @@ function mutate(bits) {
             step = -1;
         }
 
-        difference = false;
         while (copyLen > 0) {
             var srcBit = bits[src] ^ invert;
             if (difference || bits[dest] != srcBit) {
