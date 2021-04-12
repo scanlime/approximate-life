@@ -1,10 +1,15 @@
 <!DOCTYPE html>
-<html><head><script>"use strict";
+<html><head><meta charset="utf-8"/><script>"use strict";
 // (C) Micah Elizabeth Scott 2014 - 2021
 
 function main() {
-    var bitstream = new Bitstream(location.hash);
-    var state = Simulator(bitstream.bits);
+    var bitstream, state;
+
+    function setup() {
+        bitstream = new Bitstream(location.hash);
+        state = Simulator(bitstream.bits);
+        draw();
+    }
 
     function draw() {
         var layer = new Renderer(document.getElementById('main'));
@@ -12,8 +17,10 @@ function main() {
         layer.infoFrame(bitstream);
         layer.solidFrame(state);
     }
+
+    window.addEventListener('hashchange', setup);
     window.addEventListener('resize', draw);
-    draw();
+    setup();
 }
 
 function Bitstream(string) {
@@ -74,8 +81,9 @@ function Renderer(canvas) {
         context.fillStyle = BIT_STYLE;
         var bitCell = width / bits.length;
         var bitWidth = bitCell * BIT_THICKNESS;
+        var zeroHeight = Math.min(bitWidth, height / 4);
         for (var i = 0; i < bits.length; i++) {
-            var bitHeight = (1 & bits[i]) ? height : bitWidth;
+            var bitHeight = (1 & bits[i]) ? height : zeroHeight;
             context.fillRect(bitCell*(i+0.5-BIT_THICKNESS*0.5), top+height-bitHeight, bitWidth, bitHeight);
         }
     }
