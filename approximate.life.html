@@ -922,9 +922,8 @@ function calculateScore() {
     return score;
 }
 
-// Mutate the bitstream at least once. The result will almost certainly be different
-// from the input, but this is not strictly guaranteed. (e.g. in the case of repeated
-// mutations that cancel each other out)
+// Mutate the bitstream via a random copy or inversion.
+// The mutation is guaranteed to actually modify the bitstream.
 
 function mutate(bits) {
     var difference = false;
