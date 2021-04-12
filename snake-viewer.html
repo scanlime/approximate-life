@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html><head><script>"use strict";
+// (C) Micah Elizabeth Scott 2014 - 2021
+
+function main() {
+    var bitstream = new Bitstream(location.hash);
+    var state = Simulator(bitstream.bits);
+
+    function draw() {
+        var layer = new Renderer(document.getElementById('main'));
+        layer.clear();
+        layer.infoFrame(bitstream);
+        layer.solidFrame(state);
+    }
+    window.addEventListener('resize', draw);
+    draw();
+}
+
+function Bitstream(string) {
+    function fromHexString(string) {
+        var numBits = 0;
+        var bits = new Uint8Array(string.length * 4);
+        for (var i = 0; i < string.length; i++) {
+            var digit = parseInt(string[i], 16);
+            if (digit < 0x10) {
+                for (var j = 3; j >= 0; j--) {
+                    bits[numBits++] = (digit >> j) & 1;
+                }
+            }
+        }
+        return bits.subarray(0, numBits);
+    }
+
+    this.toHexString = function() {
+        var result = [];
+        var digit = this.bits.length >> 2;
+        do {
+            digit -= 1;
+            var h = 0;
+            for (var i = 0; i < 4; i++) {
+                h += (this.bits[this.bits.length-1-(digit*4+i)]&1)<<i;
+            }
+            result.push(h.toString(16));
+        } while (digit > 0);
+        return result.join("");
+    }
+
+    this.bits = fromHexString(string);
+}
+
+function Renderer(canvas) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    this.canvas = canvas;
+    var context = canvas.getContext('2d');
+
+    const SCALE = Math.min(canvas.height, canvas.width) / 50.0;
+    const CENTER_X = 0.5;
+    const CENTER_Y = 0.47;
+    const TRIANGLE_FILL_STYLE = 'rgba(255,40,255,0.4)';
+    const EDGE_STROKE_STYLE = '#e5cbe3';
+    const EDGE_STROKE_WIDTH = 0.055;
+    const BORDER_STROKE_STYLE = '#131916';
+    const BORDER_STROKE_WIDTH = 4.0;
+    const MONOSPACE_FONT = '"Consolas"';
+    const BIT_THICKNESS = 0.5;
+    const BIT_STYLE = '#fff';
+
+    var monospaceRefHeight = 100;
+    context.font = `${monospaceRefHeight}px ${MONOSPACE_FONT}`;
+    var monospaceAspectRatio = monospaceRefHeight / context.measureText("0").width;
+
+    this.drawBits = function(bits, left, top, width, height) {
+        context.fillStyle = BIT_STYLE;
+        var bitCell = width / bits.length;
+        var bitWidth = bitCell * BIT_THICKNESS;
+        for (var i = 0; i < bits.length; i++) {
+            var bitHeight = (1 & bits[i]) ? height : bitWidth;
+            context.fillRect(bitCell*(i+0.5-BIT_THICKNESS*0.5), top+height-bitHeight, bitWidth, bitHeight);
+        }
+    }
+
+    this.drawEdgePaths = function(state) {
+        var index = 0;
+        for (var i = 0; i < state.numEdges; i++) {
+            context.beginPath();
+            for (var j = 0; j < state.pointsPerEdge; j++) {
+                var p = state.edgePointIDs[index++];
+                context.lineTo(state.pointX[p], state.pointY[p]);
+            }
+            context.stroke();
+        }
+    }
+
+    this.drawTrianglePaths = function(state) {
+        var index = 0;
+        for (var i = 0; i < state.numTriangles; i++) {
+            context.beginPath();
+            for (var j = 0; j < state.pointsPerTriangle; j++) {
+                var p = state.trianglePointIDs[index++];
+                context.lineTo(state.pointX[p], state.pointY[p]);
+            }
+            context.closePath();
+            context.fill();
+        }
+    }
+
+    this.clear = function() {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    this.solidFrame = function(state) {
+        context.setTransform(SCALE, 0, 0, SCALE, canvas.width * CENTER_X, canvas.height * CENTER_Y);
+
+        context.strokeStyle = BORDER_STROKE_STYLE;
+        context.lineWidth = BORDER_STROKE_WIDTH;
+        context.lineCap = 'round';
+        this.drawEdgePaths(state);
+
+        context.fillStyle = TRIANGLE_FILL_STYLE;
+        this.drawTrianglePaths(state);
+
+        context.strokeStyle = EDGE_STROKE_STYLE;
+        context.lineWidth = EDGE_STROKE_WIDTH;
+        context.lineCap = 'round';
+        this.drawEdgePaths(state);
+
+        context.setTransform(1,0,0,1,0,0);
+    }
+
+    this.infoFrame = function(bitstream) {
+        var xMargin = 10;
+        var yMargin = 4;
+        var bitFontHeight = Math.min(SCALE * 3.0, (canvas.width - xMargin * 2) / bitstream.bits.length * monospaceAspectRatio * 4);
+        var footerFontHeight = SCALE * 0.75;
+        var patternH = SCALE * 2.0;
+        var patternY = canvas.height - footerFontHeight - bitFontHeight - patternH - yMargin * 5;
+
+        this.drawBits(bitstream.bits, 0, patternY, canvas.width, patternH);
+
+        context.fillStyle = 'rgba(255,255,255,0.5)';
+        context.textAlign = 'center';
+        context.textBaseline = 'top';
+        context.font = `${bitFontHeight}px ${MONOSPACE_FONT}`;
+        context.fillText(bitstream.toHexString(), canvas.width/2, patternY + patternH + yMargin*2);
+
+        context.fillStyle = 'rgba(255,255,255,0.15)';
+        context.font = `${footerFontHeight}px "DIN Condensed"`;
+        context.textAlign = 'left';
+        context.textBaseline = 'bottom';
+        context.fillText(`MES 2014-2021  //  TRI-${bitstream.bits.length}`, xMargin, canvas.height - yMargin);
+    }
+}
+
+function Simulator(bits) {
+    // Single-use simulator, not optimized for fast reuse
+
+    // Force model
+    const K = 0.1;
+    const PRESSURE_K = K * 0.3;
+    const TENSION_K = K * 1.0;
+    const SURFACE_TENSION_K = TENSION_K * 2.0;
+    const RESTING_AREA = 3.0;
+    const SIMULATION_STEPS = 400;
+
+    // Size of triangle memo buffer, and maximum size of shapes we can build.
+    // Must be a power of two. Determines memory usage per worker.
+    const WORLD_SIZE_LOG2 = 9;
+    const WORLD_SIZE = 1 << WORLD_SIZE_LOG2;
+    const WORLD_SIZE_MASK = WORLD_SIZE - 1;
+    const WORLD_AREA = WORLD_SIZE * WORLD_SIZE;
+
+    // Maximum triangle counts, based on maximum bitstream sizes
+    const MAX_TRIANGLES = bits.length;
+
+    // Amount of simulation detail; each edge is simulated with many intermediate
+    // points, to give the cells flexible walls that conform to their surroundings.
+    const POINTS_PER_EDGE = 9;
+    const MAX_EDGES = MAX_TRIANGLES * 3;
+    const POINTS_PER_TRIANGLE = (POINTS_PER_EDGE - 1) * 3;
+    const MAX_POINTS = MAX_EDGES * POINTS_PER_EDGE;
+
+    // Memo buffer, one uint32 per possible triangle. The coordinate system
+    // uses X and Y axes that correspond to two triangle edges. Each grid square
+    // consists of two triangles, one at [ (x,y), (x+1,y), (x,y+1) ] and one at
+    // [ (x+1,y), (x+1,y+1), (x,y+1) ]. Each grid square has an occupancy boolean.
+    var triMemo = new Uint8Array(WORLD_AREA * 2);
+
+    // Edge memo: Each (x,y) cell has three possible edges, arranged in the same order
+    // as a left-facing triangle (angle 0).
+    var edgeMemo = new Uint8Array(WORLD_AREA * 3);
+
+    // For each edge in the edgeMemo, the edgeMap gives
+    // the index in edgePointIDs / edgeCellCounts.
+    var edgeMap = new Uint32Array(WORLD_AREA * 3);
+
+    // Point memo: Each (x,y) cell maps to a boolean telling us if we've
+    // created the point yet. This helps us deduplicate points when mapping from the
+    // abstract triangle geometry to our actual points and edges.
+    var pointMemo = new Uint8Array(WORLD_AREA);
+
+    // For each point in the pointMemo, the pointMap gives the index in
+    // pointX and pointY corresponding to that triangle vertex.
+    var pointMap = new Uint32Array(WORLD_AREA);
+
+    // Map Point ID -> (x, y, type)
+    var pointX = new Float64Array(MAX_POINTS);
+    var pointY = new Float64Array(MAX_POINTS);
+    var pointType = new Uint8Array(MAX_POINTS);
+
+    // Map Edge ID -> Fixed-size list of Point IDs
+    var edgePointIDs = new Uint32Array(MAX_POINTS);
+
+    // Edge ID -> Number of cells referencing this edge
+    var edgeCellCounts = new Uint8Array(MAX_EDGES);
+
+    // Triangle ID -> Fixed size list of Point IDs in winding order
+    var trianglePointIDs = new Uint32Array(MAX_POINTS);
+
+    // Triangle builder state
+    var turtleX = 0;
+    var turtleY = 0;
+    var turtleA = 0;
+    var numEdges = 0;
+    var numPoints = 0;
+    var numTriangles = 0;
+
+    // Look for a point at the integer grid location (x, y). Return its ID.
+    // Create the point if it doesn't already exist.
+
+    function gridPoint(x, y) {
+        var cell = (WORLD_SIZE_MASK & x) | ((WORLD_SIZE_MASK & y) << WORLD_SIZE_LOG2);
+        if (pointMemo[cell] == 1) {
+            return pointMap[cell];
+        }
+
+        pointMemo[cell] = 1;
+        var p = numPoints;
+        pointMap[cell] = p;
+
+        pointX[p] = x * 0.8660254037844387;   // sqrt(3)/2
+        pointY[p] = y + x * 0.5;
+        pointType[p] = 0;
+
+        numPoints = p + 1;
+        return p;
+    }
+
+    // Look up or create an edge. This needs to correlate multiple ways the
+    // edge is known: As an arbitrary ID, as the integer coordinates of two
+    // endpoints, and as a cell location and direction. The return value is
+    // an edge ID for this edge in its canonical direction. Depending on the triangle
+    // direction, we may end up using this edge as-is or reversed.
+
+    function edge(cellX, cellY, cellDir, iX1, iY1, iX2, iY2) {
+        var cell = cellDir + 3 * ((cellX & WORLD_SIZE_MASK) | ((cellY & WORLD_SIZE_MASK) << WORLD_SIZE_LOG2));
+        if (edgeMemo[cell] == 1) {
+            return edgeMap[cell];
+        }
+
+        edgeMemo[cell] = 1;
+        var edge = numEdges;
+        edgeMap[cell] = edge;
+        edgeCellCounts[edge] = 0;
+
+        var p1 = gridPoint(iX1, iY1);
+        var p2 = gridPoint(iX2, iY2);
+
+        // Fill in endpoints
+        edgePointIDs[POINTS_PER_EDGE * edge] = p1;
+        edgePointIDs[POINTS_PER_EDGE * (edge+1) - 1] = p2;
+
+        // Create unique midpoints. These are not memoized for gridPoint, since
+        // they don't correspond to any triangle grid intersections.
+
+        var pointID = numPoints;
+        var x1 = pointX[p1];
+        var y1 = pointY[p1];
+        var xD = pointX[p2] - x1;
+        var yD = pointY[p2] - y1;
+
+        for (var i = 1; i < (POINTS_PER_EDGE-1); i++) {
+            var t = i / (POINTS_PER_EDGE-1);
+            pointX[pointID] = x1 + xD * t;
+            pointY[pointID] = y1 + yD * t;
+            pointType[pointID] = 1;
+            edgePointIDs[POINTS_PER_EDGE * edge + i] = pointID++;
+        }
+
+        numPoints = pointID;
+        numEdges = edge + 1;
+        return edge;
+    }
+
+    // Using the current turtle position and current bitstream, create new
+    // triangles and update the memo in order to build a shape by interpreting
+    // the 1s and 0s in the bitstream as instructions to build left-facing and
+    // right-facing triangle geometry.
+    //
+    // Each bit is an instruction to a virtual turtle:
+    //
+    //    1) Record the current point
+    //    2) Move forward
+    //    3) Turn: 1=Right, 0=Left
+    //    4) Record the current point
+    //    5) Move forward
+    //    6) Turn: 1=Right, 0=Left
+    //    7) Record the current point
+    //    8) Draw a triangle between these three points
+    //
+    // Duplicate triangles are merged, using the memo buffer.
+
+    function build(bit) {
+        // Triangle origin and polarity. Two triangle polarities:
+        //    0: [ (x,y), (x+1,y), (x,y+1) ]
+        //    1: [ (x,y), (x,y+1), (x-1,y+1) ]
+        //
+        // These correspond to the triangles you get for the same bit.
+        // In fact, these triangles are only produced by the corresponding bit.
+        //
+        // The identifier we want to build for a triangle is a bitfield:
+        //    LSB:                 Triangle polarity
+        //    worldSizeLog2 bits:  X coordinate, modulo worldSize
+        //    worldSizeLog2 bits:  Y coordinate, modulo worldSize
+
+        var cellX = turtleX, cellY = turtleY;
+
+        // Semantically, we're moving, turning, moving, turning, then drawing
+        // a triangle. But we can collapse this into a lookup table of which
+        // triangles we end up with for each possible bit and angle. There are
+        // only six possibilities.
+
+        if (bit & 1) {    // 1=Right
+
+            if (turtleA == 0) {
+                cellX--;
+                turtleY++;
+                turtleX--;
+                turtleA = 2;
+
+            } else if (turtleA == 1) {
+                cellX--;
+                cellY--;
+                turtleY--;
+                turtleA = 0;
+
+            } else { // turtleA == 2
+                cellY--;
+                turtleX++;
+                turtleA = 1;
+            }
+
+        } else {        // 0=Left
+
+            if (turtleA == 0) {
+                turtleX++;
+                turtleA = 1;
+
+            } else if (turtleA == 1) {
+                cellX--;
+                turtleX--;
+                turtleY++;
+                turtleA = 2;
+
+            } else { // turtleA == 2
+                cellY--;
+                turtleY--;
+                turtleA = 0;
+            }
+        }
+
+        var tri = (bit & 1) | ((cellX & WORLD_SIZE_MASK) << 1) | ((cellY & WORLD_SIZE_MASK) << (WORLD_SIZE_LOG2+1));
+        if (triMemo[tri] != 1) {
+            triMemo[tri] = 1;
+
+            var nextPointId = POINTS_PER_TRIANGLE * numTriangles;
+            if (bit & 1) {
+                // Clockwise / Right / 1 triangle
+
+                var e1 = edge(
+                    cellX+1, cellY, 0,
+                    cellX+1, cellY, cellX+1, cellY+1);
+
+                var e2 = edge(
+                    cellX, cellY+1, 2,
+                    cellX+1, cellY+1, cellX, cellY+1);
+
+                var e3 = edge(
+                    cellX, cellY, 1,
+                    cellX, cellY+1, cellX+1, cellY);
+
+                edgeCellCounts[e1]++;
+                edgeCellCounts[e2]++;
+                edgeCellCounts[e3]++;
+
+                for (var i = POINTS_PER_EDGE - 1; i; i--) {
+                    trianglePointIDs[nextPointId++] = edgePointIDs[e3*POINTS_PER_EDGE + i];
+                }
+                for (var i = POINTS_PER_EDGE - 1; i; i--) {
+                    trianglePointIDs[nextPointId++] = edgePointIDs[e2*POINTS_PER_EDGE + i];
+                }
+                for (var i = POINTS_PER_EDGE - 1; i; i--) {
+                    trianglePointIDs[nextPointId++] = edgePointIDs[e1*POINTS_PER_EDGE + i];
+                }
+
+            } else {
+                // Counterclockwise / Left / 0 triangle
+
+                var e1 = edge(
+                    cellX, cellY, 0,
+                    cellX, cellY, cellX, cellY+1);
+
+                var e2 = edge(
+                    cellX, cellY, 1,
+                    cellX, cellY+1, cellX+1, cellY);
+
+                var e3 = edge(
+                    cellX, cellY, 2,
+                    cellX+1, cellY, cellX, cellY);
+
+                edgeCellCounts[e1]++;
+                edgeCellCounts[e2]++;
+                edgeCellCounts[e3]++;
+
+                for (var i = 1; i < POINTS_PER_EDGE; i++) {
+                    trianglePointIDs[nextPointId++] = edgePointIDs[e1*POINTS_PER_EDGE + i];
+                }
+                for (var i = 1; i < POINTS_PER_EDGE; i++) {
+                    trianglePointIDs[nextPointId++] = edgePointIDs[e2*POINTS_PER_EDGE + i];
+                }
+                for (var i = 1; i < POINTS_PER_EDGE; i++) {
+                    trianglePointIDs[nextPointId++] = edgePointIDs[e3*POINTS_PER_EDGE + i];
+                }
+            }
+
+            // Done building triangle
+            numTriangles++;
+        }
+    }
+
+    // Center the entire drawing's bounding box
+    function center() {
+        var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+        for (var i = 0; i < numPoints; i++) {
+            var x = pointX[i];
+            var y = pointY[i];
+            if (x < minX) minX = x;
+            if (y < minY) minY = y;
+            if (x > maxX) maxX = x;
+            if (y > maxY) maxY = y;
+        }
+        var centerX = (minX + maxX) * 0.5;
+        var centerY = (minY + maxY) * 0.5;
+        for (var i = 0; i < numPoints; i++) {
+            pointX[i] = pointX[i] - centerX;
+            pointY[i] = pointY[i] - centerY;
+        }
+    }
+
+    // Simulate the forces acting on the points in this shape,
+    // running a number of iterations in succession.
+
+    function simulate() {
+        var steps = SIMULATION_STEPS;
+        while (steps > 0) {
+
+            // Tension forces along edges
+            for (var edge = 0; edge < numEdges; edge++) {
+
+                // How much to contract by
+                var f = (edgeCellCounts[edge] == 1 ? SURFACE_TENSION_K : TENSION_K);
+
+                // Iterate over all points in edge
+                var begin = edge * POINTS_PER_EDGE;
+                var end = begin + POINTS_PER_EDGE;
+
+                var p1 = edgePointIDs[begin];
+                var x1 = pointX[p1];
+                var y1 = pointY[p1];
+
+                for (var i = begin + 1; i < end; i++) {
+
+                    var p2 = edgePointIDs[i];
+                    var x2 = pointX[p2];
+                    var y2 = pointY[p2];
+
+                    var dx = f * (x2 - x1);
+                    var dy = f * (y2 - y1);
+
+                    pointX[p1] = x1 + dx;
+                    pointY[p1] = y1 + dy;
+                    x1 = pointX[p2] = x2 - dx;
+                    y1 = pointY[p2] = y2 - dy;
+                    p1 = p2;
+                }
+            }
+
+            // Pressure forces in each triangle
+            for (var tri = 0; tri < numTriangles; tri++) {
+
+                // Calculate area, walking over all points in the triangle.
+                // This calculation gives us 2x the area.
+                var area_2x = 0;
+                {
+                    var begin = tri * POINTS_PER_TRIANGLE;
+                    var end = begin + POINTS_PER_TRIANGLE;
+
+                    var p1 = trianglePointIDs[end - 1];
+                    var x1 = pointX[p1];  // Loop around
+                    var y1 = pointY[p1];
+
+                    for (var i = begin; i < end; i++) {
+                        var p2 = trianglePointIDs[i];
+                        var x2 = pointX[p2];
+                        var y2 = pointY[p2];
+
+                        area_2x += (x1 + x2) * (y1 - y2);
+
+                        x1 = x2;
+                        y1 = y2;
+                    }
+                }
+
+                // Force due to pressure: Resting area / calculated area.
+                // Ideal gas law for constant temperature.
+
+                var f = PRESSURE_K * ((RESTING_AREA / area_2x) - 1.0);
+
+                // Apply force normal to each perimeter segment.
+                // Includes multiply by segment length.
+                {
+                    var begin = tri * POINTS_PER_TRIANGLE;
+                    var end = (tri + 1) * POINTS_PER_TRIANGLE;
+
+                    var p1 = trianglePointIDs[end - 1];
+                    var x1 = pointX[p1];  // Loop around
+                    var y1 = pointY[p1];
+
+                    for (var i = begin; i < end; i++) {
+                        var p2 = trianglePointIDs[i];
+                        var x2 = pointX[p2];
+                        var y2 = pointY[p2];
+
+                        var dx = x2 - x1;
+                        var dy = y2 - y1;
+
+                        pointX[p1] = x1 - dy * f;
+                        pointY[p1] = y1 + dx * f;
+                        x1 = pointX[p2] = x2 - dy * f;
+                        y1 = pointY[p2] = y2 + dx * f;
+                        p1 = p2;
+                    }
+                }
+            }
+
+            steps--;
+        }
+    }
+
+    for (var bit of bits) {
+        build(bit);
+    }
+    simulate();
+    center();
+
+    return {
+        bits,
+        numTriangles,
+        numEdges,
+        numPoints,
+        pointX: pointX.subarray(0, numPoints),
+        pointY: pointY.subarray(0, numPoints),
+        edgePointIDs: edgePointIDs.subarray(0, numEdges * POINTS_PER_EDGE),
+        trianglePointIDs: trianglePointIDs.subarray(0, numTriangles * POINTS_PER_TRIANGLE),
+        pointsPerEdge: POINTS_PER_EDGE,
+        pointsPerTriangle: POINTS_PER_TRIANGLE,
+    }
+}
+
+</script>
+<style>
+    body {
+        background: #192822;
+        overflow: hidden;
+    }
+    canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+    }
+</style>
+</head>
+<body onload="main()">
+    <canvas id="main"></canvas>
+</body>
+</html>
