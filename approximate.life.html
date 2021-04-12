@@ -190,17 +190,6 @@ function Bitstream(numBits) {
         } while (digit > 0);
         return result.join("");
     }
-
-    this.drawPattern = function(context, left, top, width, height) {
-        const THICKNESS = 0.5;
-        context.fillStyle = '#fff';
-        var bitWidth = width / this.bits.length;
-        var bitThickness = bitWidth * THICKNESS;
-        for (var i = 0; i < this.bits.length; i++) {
-            var bitHeight = (1 & this.bits[i]) ? height : bitThickness;
-            context.fillRect(bitWidth*(i+0.5-THICKNESS*0.5), top+height-bitHeight, bitThickness, bitHeight);
-        }
-    }
 }
 
 function ReferenceImage(text) {
@@ -248,10 +237,23 @@ function Renderer(canvas, resolution) {
     const BORDER_STROKE_WIDTH = 4.0;
     const ROLLING_CHART_OPACITY = 0.35;
     const MONOSPACE_FONT = '"Consolas"';
+    const BIT_THICKNESS = 0.5;
+    const BIT_STYLE = '#fff';
 
     var monospaceRefHeight = 100;
     context.font = `${monospaceRefHeight}px ${MONOSPACE_FONT}`;
     var monospaceAspectRatio = monospaceRefHeight / context.measureText("0").width;
+
+    this.drawBits = function(bits, left, top, width, height) {
+        context.fillStyle = BIT_STYLE;
+        var bitCell = width / bits.length;
+        var bitWidth = bitCell * BIT_THICKNESS;
+        var zeroHeight = Math.min(bitWidth, height / 4);
+        for (var i = 0; i < bits.length; i++) {
+            var bitHeight = (1 & bits[i]) ? height : zeroHeight;
+            context.fillRect(bitCell*(i+0.5-BIT_THICKNESS*0.5), top+height-bitHeight, bitWidth, bitHeight);
+        }
+    }
 
     this.drawEdgePaths = function(state) {
         var index = 0;
@@ -376,7 +378,7 @@ function Renderer(canvas, resolution) {
         // Scroll the bulk of the rolling chart
         context.drawImage(e.previousFrame, 0, scrollRate, canvas.width, scrollHeight, 0, 0, canvas.width, scrollHeight);
 
-        e.bitstream.drawPattern(context, 0, patternY, canvas.width, patternH);
+        this.drawBits(e.bitstream.bits, 0, patternY, canvas.width, patternH);
 
         context.fillStyle = 'rgba(255,255,255,0.5)';
         context.textAlign = 'center';
