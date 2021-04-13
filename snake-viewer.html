@@ -3,24 +3,40 @@
 // (C) Micah Elizabeth Scott 2014 - 2021
 
 function main() {
-    var bitstream, state;
-
-    function setup() {
-        bitstream = new Bitstream(location.hash);
-        state = Simulator(bitstream.bits);
-        draw();
-    }
+    var bitstream = new Bitstream(location.hash);
+    var state = Simulator(bitstream.bits);
+    var input = document.getElementById('hexDigits');
+    input.value = bitstream.toHexString();
 
     function draw() {
-        var layer = new Renderer(document.getElementById('main'));
-        layer.clear();
-        layer.infoFrame(bitstream);
-        layer.solidFrame(state);
-    }
+        var shapeLayer = new Renderer(document.getElementById('shape'), [window.innerWidth, window.innerHeight]);
+        shapeLayer.clear();
+        shapeLayer.solidFrame(state);
 
-    window.addEventListener('hashchange', setup);
+        var bitLayer = new Renderer(document.getElementById('bitPattern'), [window.innerWidth, window.innerHeight/10]);
+        bitLayer.clear();
+        bitLayer.bitstreamFrame(bitstream);
+    }
     window.addEventListener('resize', draw);
-    setup();
+    draw();
+
+    input.addEventListener('input', function () {
+        bitstream = new Bitstream(input.value);
+        console.log(bitstream);
+        location.hash = bitstream.toHexString();
+        state = Simulator(bitstream.bits);
+        draw();
+    });
+
+    window.addEventListener('hashchange', function() {
+        var newBitstream = new Bitstream(location.hash);
+        if (newBitstream.toHexString() != bitstream.toHexString()) {
+            bitstream = newBitstream;
+            state = Simulator(bitstream.bits);
+            input.value = bitstream.toHexString();
+            draw();
+        }
+    });
 }
 
 function Bitstream(string) {
@@ -55,27 +71,19 @@ function Bitstream(string) {
     this.bits = fromHexString(string);
 }
 
-function Renderer(canvas) {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+function Renderer(canvas, resolution) {
+    canvas.width = resolution[0];
+    canvas.height = resolution[1];
     this.canvas = canvas;
     var context = canvas.getContext('2d');
 
-    const SCALE = Math.min(canvas.height, canvas.width) / 50.0;
-    const CENTER_X = 0.5;
-    const CENTER_Y = 0.47;
     const TRIANGLE_FILL_STYLE = 'rgba(255,40,255,0.4)';
     const EDGE_STROKE_STYLE = '#e5cbe3';
     const EDGE_STROKE_WIDTH = 0.055;
     const BORDER_STROKE_STYLE = '#131916';
     const BORDER_STROKE_WIDTH = 4.0;
-    const MONOSPACE_FONT = '"Consolas"';
     const BIT_THICKNESS = 0.5;
     const BIT_STYLE = '#fff';
-
-    var monospaceRefHeight = 100;
-    context.font = `${monospaceRefHeight}px ${MONOSPACE_FONT}`;
-    var monospaceAspectRatio = monospaceRefHeight / context.measureText("0").width;
 
     this.drawBits = function(bits, left, top, width, height) {
         context.fillStyle = BIT_STYLE;
@@ -118,7 +126,8 @@ function Renderer(canvas) {
     }
 
     this.solidFrame = function(state) {
-        context.setTransform(SCALE, 0, 0, SCALE, canvas.width * CENTER_X, canvas.height * CENTER_Y);
+        var scale = Math.min(canvas.width * 0.95 / (state.maxX - state.minX), canvas.height * 0.6 / (state.maxY - state.minY));
+        context.setTransform(scale, 0, 0, scale, canvas.width/2, canvas.height/2);
 
         context.strokeStyle = BORDER_STROKE_STYLE;
         context.lineWidth = BORDER_STROKE_WIDTH;
@@ -136,27 +145,8 @@ function Renderer(canvas) {
         context.setTransform(1,0,0,1,0,0);
     }
 
-    this.infoFrame = function(bitstream) {
-        var xMargin = 10;
-        var yMargin = 4;
-        var bitFontHeight = Math.min(SCALE * 3.0, (canvas.width - xMargin * 2) / bitstream.bits.length * monospaceAspectRatio * 4);
-        var footerFontHeight = SCALE * 0.75;
-        var patternH = SCALE * 2.0;
-        var patternY = canvas.height - footerFontHeight - bitFontHeight - patternH - yMargin * 5;
-
-        this.drawBits(bitstream.bits, 0, patternY, canvas.width, patternH);
-
-        context.fillStyle = 'rgba(255,255,255,0.5)';
-        context.textAlign = 'center';
-        context.textBaseline = 'top';
-        context.font = `${bitFontHeight}px ${MONOSPACE_FONT}`;
-        context.fillText(bitstream.toHexString(), canvas.width/2, patternY + patternH + yMargin*2);
-
-        context.fillStyle = 'rgba(255,255,255,0.15)';
-        context.font = `${footerFontHeight}px "DIN Condensed"`;
-        context.textAlign = 'left';
-        context.textBaseline = 'bottom';
-        context.fillText(`MES 2014-2021  //  TRI-${bitstream.bits.length}`, xMargin, canvas.height - yMargin);
+    this.bitstreamFrame = function(bitstream) {
+        this.drawBits(bitstream.bits, 0, 0, canvas.width, canvas.height);
     }
 }
 
@@ -232,6 +222,9 @@ function Simulator(bits) {
     var numEdges = 0;
     var numPoints = 0;
     var numTriangles = 0;
+
+    // Axis-aligned bounding box
+    var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
 
     // Look for a point at the integer grid location (x, y). Return its ID.
     // Create the point if it doesn't already exist.
@@ -448,7 +441,6 @@ function Simulator(bits) {
 
     // Center the entire drawing's bounding box
     function center() {
-        var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
         for (var i = 0; i < numPoints; i++) {
             var x = pointX[i];
             var y = pointY[i];
@@ -572,10 +564,8 @@ function Simulator(bits) {
     center();
 
     return {
-        bits,
-        numTriangles,
-        numEdges,
-        numPoints,
+        numTriangles, numEdges, numPoints,
+        minX, maxX, minY, maxY,
         pointX: pointX.subarray(0, numPoints),
         pointY: pointY.subarray(0, numPoints),
         edgePointIDs: edgePointIDs.subarray(0, numEdges * POINTS_PER_EDGE),
@@ -587,19 +577,46 @@ function Simulator(bits) {
 
 </script>
 <style>
+
     body {
         background: #192822;
         overflow: hidden;
+        margin: 0;
     }
-    canvas {
+
+    #shape {
         position: absolute;
         top: 0;
         left: 0;
-        width: 100%;
+        opacity: 0.8;
     }
+
+    #bitPattern {
+        position: absolute;
+        left: 0;
+        bottom: 20px;
+        opacity: 0.8;
+    }
+
+    #hexDigits {
+        color: rgba(255,255,255,0.8);
+        font: 20px monospace;
+        padding: 1%;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 98%;
+        height: 98%;
+        background: none;
+        border: none;
+        resize: none;
+    }
+
 </style>
 </head>
 <body onload="main()">
-    <canvas id="main"></canvas>
+    <canvas id="shape"></canvas>
+    <canvas id="bitPattern"></canvas>
+    <textarea id="hexDigits"></textarea>
 </body>
 </html>
