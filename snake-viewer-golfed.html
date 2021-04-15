@@ -1,12 +1,9 @@
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"/><script>"use strict";
 function m(s) {
-  var i,j,k,a,b,c,t,r,N=0,P=0,E=0,T=0,tX=0,tY=0,tA=0,mx=1e9,Mx=-1e9,my=1e9,My=-1e9,B=[],X=[],Y=[],pE=[],cE=[],pT=[],tM=[],eM=[],eA=[],pM=[],pA=[];
+  var i,j,k,a,b,c,d,t,r,N=0,P=0,E=0,T=0,tX=0,tY=0,tA=0,mx=1e9,Mx=-1e9,my=1e9,My=-1e9,B=[],X=[],Y=[],pE=[],cE=[],pT=[],tM=[],eM=[],eA=[],pM=[],pA=[];
   for(i=0;i<s.length;i++){k=parseInt(s[i],16);if(k<0x10)for(j=3;j>=0;j--)B[N++]=(k>>j)&1}
-  function fG(x,y){
-    var p=P,c=(0x1ff&x)|((0x1ff&y)<<9);if(pM[c])return pA[c];
-    pM[c]=1;pA[c]=p;X[p]=x*.8660254;Y[p]=y+x/2;P=p+1;return p;
-  }
+  function fG(x,y){var p=P,c=(0x1ff&x)|((0x1ff&y)<<9);if(pM[c])return pA[c];pM[c]=1;pA[c]=p;X[p]=x*.8660254;Y[p]=y+x/2;P=p+1;return p}
   function fE(cX,cY,cD,iX,iY,iU,iV){
     var a,b,i,e=E,c=cD+3*((cX&0x1ff)|((cY&0x1ff)<<9));
     if(eM[c])return eA[c];eM[c]=1;a=fG(iX,iY),b=fG(iU,iV);eA[c]=e;cE[e]=0;pE[9*e]=a;pE[9*(e+1)-1]=b;
@@ -27,54 +24,27 @@ function m(s) {
   }
   for(t=400;t;t--){
     for(i=0;i<E;i++){
-      k=cE[i]==1?.2:.1;
-      var p1 = pE[i*9];
-      var x1 = X[p1];
-      var y1 = Y[p1];
-      for(j=i*9+1;j<i*9+9;j++) {
-        var p2 = pE[j];
-        var dx = k* (X[p2] - X[p1]);
-        var dy = k* (Y[p2] - Y[p1]);
-        X[p1]+=dx;Y[p1]+=dy;X[p2]-=dx;Y[p2]-=dy;p1=p2;
-      }
+      k=cE[i]==1?.2:.1;c=pE[i*9];
+      for(j=i*9+1;j<i*9+9;j++){d=pE[j];a=k*(X[d]-X[c]);b=k*(Y[d]-Y[c]);X[c]+=a;Y[c]+=b;X[d]-=a;Y[d]-=b;c=d}
     }
     for(i=0;i<T;i++) {
-      r=0;
-      var p1 = pT[i*24+23];
-      var x1 = X[p1];
-      var y1 = Y[p1];
-      for(j=i*24;j<(i+1)*24;j++) {
-        var p2 = pT[j];
-        var x2 = X[p2];
-        var y2 = Y[p2];
-        r+=(x1+x2)*(y1-y2);
-        x1=x2;y1=y2;
-      }
-      k=.03*((3/r)-1);
-      var p1 = pT[(i+1)*24-1];
-      for(j=i*24;j<(i+1)*24;j++) {
-        var p2 = pT[j];
-        var dx = k*(X[p2]-X[p1]);
-        var dy = k*(Y[p2]-Y[p1]);
-        X[p1]-=dy;Y[p1]+=dx;X[p2]-=dy;Y[p2]+=dx;p1=p2;
-      }
+      r=0;c=pT[i*24+23];a=X[c];b=Y[c];for(j=i*24;j<(i+1)*24;j++){d=pT[j];r+=(a+X[d])*(b-Y[d]);a=X[d];b=Y[d]}
+      k=.03*((3/r)-1);c=pT[(i+1)*24-1];for(j=i*24;j<(i+1)*24;j++){d=pT[j];a=k*(X[d]-X[c]);b=k*(Y[d]-Y[c]);X[c]-=b;Y[c]+=a;X[d]-=b;Y[d]+=a;c=d}
     }
   }
   for(i=0;i<P;i++){j=X[i],k=Y[i];if(j<mx)mx=j;if(k<my)my=k;if(j>Mx)Mx=j;if(k>My)My=k}
   for(i=0;i<P;i++){X[i]-=(mx+Mx)/2;Y[i]-=(my+My)/2}
-  window.onresize=function(){
+  (window.onresize=function(){
     var i,j,n,p,x,s,c=document.getElementById('c');
     c.width=window.innerWidth;c.height=window.innerHeight;
     x=c.getContext('2d');x.clearRect(0,0,c.width,c.height);
     s=.95*Math.min(c.width/(Mx-mx),c.height/(My-my));
     x.setTransform(s,0,0,s,c.width/2,c.height/2);
-    x.fillStyle='#55a';x.strokeStyle='#141';x.lineWidth=.08;x.lineCap='round';
+    x.fillStyle='rgba(20,20,200,0.5)';x.strokeStyle='#141';x.lineWidth=.08;x.lineCap='round';
     for(i=0,n=0;i<T;i++){x.beginPath();for(j=0;j<24;j++){p=pT[n++];x.lineTo(X[p],Y[p])}x.closePath();x.fill()}
     for(i=0,n=0;i<E;i++){x.beginPath();for(j=0;j<9;j++){p=pE[n++];x.lineTo(X[p],Y[p])}x.stroke()}
-  }
-  window.onresize();
+  })()
 }
-</script>
-</head><body onload="m(location.hash)">
+</script></head><body onload="m(location.hash)">
 <canvas id="c" style="position: absolute; top: 0; left: 0;" />
 </body></html>
