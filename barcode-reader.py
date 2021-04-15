@@ -17,7 +17,7 @@ class BarcodeReader:
             .filter('crop', y=self.top, h=self.bottom-self.top)
             .filter('scale', self.bits, 1)
             .output('pipe:', format='rawvideo', pix_fmt='gray')
-            .run_async(pipe_stdout=True, quiet=True))
+            .run_async(pipe_stdout=True))
         prev = None
         count = 0
         while True:
