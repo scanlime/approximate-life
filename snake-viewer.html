@@ -3,7 +3,8 @@
 // (C) Micah Elizabeth Scott 2014 - 2021
 
 function main() {
-    var bitstream = new Bitstream(location.hash);
+    const DEFAULT_SHAPE = '1551551556662aaf';
+    var bitstream = new Bitstream(location.hash || DEFAULT_SHAPE);
     var state = Simulator(bitstream.bits);
     var input = document.getElementById('hexDigits');
     input.value = bitstream.toHexString();
